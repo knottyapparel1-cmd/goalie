@@ -913,7 +913,7 @@ function goalDescription(f) {
 function renderGoalDesc() {
   const p = $('#goal-desc');
   const text = goalDescription(form);
-  p.textContent = text || 'Enter what you want to measure to see your goal.';
+  p.textContent = text || 'Enter a goal title to see your goal.';
   p.classList.toggle('empty-desc', !text);
 }
 
