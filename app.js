@@ -109,6 +109,7 @@ function dayKey(d) { const x = new Date(d); return `${x.getFullYear()}-${x.getMo
 
 function periodStart(reset, now = new Date()) {
   switch (reset) {
+    case 'minute': { const m = new Date(now); m.setSeconds(0, 0); return m; }
     case 'hour': { const h = new Date(now); h.setMinutes(0, 0, 0); return h; }
     case 'day': return startOfDay(now);
     case 'week': return startOfWeek(now);
@@ -118,7 +119,7 @@ function periodStart(reset, now = new Date()) {
   }
 }
 
-const PERIOD_LABEL = { hour: 'THIS HOUR', day: 'TODAY', week: 'THIS WEEK', month: 'THIS MONTH', year: 'THIS YEAR', never: 'ALL TIME' };
+const PERIOD_LABEL = { minute: 'THIS MINUTE', hour: 'THIS HOUR', day: 'TODAY', week: 'THIS WEEK', month: 'THIS MONTH', year: 'THIS YEAR', never: 'ALL TIME' };
 
 function relTime(ts) {
   const diff = Date.now() - ts;
@@ -701,8 +702,6 @@ function syncForm() {
   renderGoalDesc();
   $('#f-bottom').classList.toggle('hidden', form.bottomMode !== 'custom');
   $('#f-unit').classList.toggle('hidden', form.unit !== 'custom');
-  const countable = form.unit === 'occurrences' || form.unit === 'custom';
-  $('#per-row').classList.toggle('hidden', !countable);
   setSeg('per', form.reset);
   $('#bottom-unit-btn').textContent = unitLabel(form).toUpperCase() || 'MEASUREMENT';
   $('#group-value').textContent = form.group ? form.group.toUpperCase() : 'NONE';
@@ -723,7 +722,7 @@ function validateForm() {
   $('#btn-submit').disabled = !ok;
 }
 
-const PER_PHRASE = { hour: ' per hour', day: ' per day', week: ' per week', month: ' per month', year: ' per year', never: ' in total' };
+const PER_PHRASE = { minute: ' per minute', hour: ' per hour', day: ' per day', week: ' per week', month: ' per month', year: ' per year', never: ' in total' };
 const DAY_PLURAL = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
 
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -764,7 +763,7 @@ function goalDescription(f) {
   let text = `Your goal is to ${f.direction} ${name}`;
   if (f.target > 0) text += ` to ${fmt(f.target)} ${unitWord(f, f.target)}${PER_PHRASE[f.reset]}`;
   const days = daysPhrase(f.days);
-  if (days) text += (f.reset === 'day' || f.reset === 'hour') ? ` on ${days}` : `, tracked on ${days}`;
+  if (days) text += (f.reset === 'day' || f.reset === 'hour' || f.reset === 'minute') ? ` on ${days}` : `, tracked on ${days}`;
   return text + '.';
 }
 

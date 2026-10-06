@@ -962,7 +962,7 @@ button {
 /* ---------- Goal "per" row (occurrences / custom units) ---------- */
 .per-row { margin-top: 14px; }
 .per-label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 800; letter-spacing: .1em; color: var(--muted); }
-.per-row .seg { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.per-row .seg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .per-row .seg button { padding: 0; }
 
 /* ---------- Group chips (under the title) ---------- */
