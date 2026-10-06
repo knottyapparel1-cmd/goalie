@@ -789,11 +789,16 @@ $('#btn-layout').addEventListener('click', () => {
 
 $('#btn-help').addEventListener('click', () => {
   openSheet(
+    el('div', { class: 'help-hero' },
+      el('div', { class: 'help-word' }, 'GOALIE'),
+      el('div', { class: 'help-tag' }, 'Not a cheerleader. A mirror.'),
+      el('p', {}, 'Goalie isn’t here to motivate you. It’s here to show you, honestly, the person you’re becoming, one check-in at a time.')),
     el('h3', {}, 'How it works'),
     el('ol', {},
-      el('li', {}, 'Tap + to set a goal: anything you want to do more of or cut back on.'),
+      el('li', {}, 'Tap + at the bottom to set a goal: anything you want to do more of or cut back on.'),
       el('li', {}, 'Tap a goal card (or its +) to check in. Use − to take one back. Hold a card for history and more.'),
-      el('li', {}, 'Tap the chart icon to see weekly, monthly and yearly totals, plus what time of day you log.')),
+      el('li', {}, 'Tap the pencil (top left) to reorder goals, delete them, or remove group names.'),
+      el('li', {}, 'Tap the chart icon to see your day, week, month and year. Tap any bar or point to view or edit that day.')),
     el('h3', {}, 'Install on iPhone'),
     el('ol', {},
       el('li', {}, 'Open this page in Safari.'),

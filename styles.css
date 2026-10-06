@@ -1051,3 +1051,16 @@ button {
   position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
   font-size: 12px; font-weight: 800; letter-spacing: .08em; color: #6b7280; pointer-events: none;
 }
+
+/* ---------- Help: GOALIE intro ---------- */
+.help-hero {
+  margin: 4px 0 18px;
+  padding: 22px 20px 18px;
+  border-radius: 18px;
+  background: var(--navy);
+  color: #fff;
+  text-align: center;
+}
+.help-word { font-size: 30px; font-weight: 800; letter-spacing: .06em; }
+.help-tag { margin-top: 6px; font-size: 17px; font-weight: 700; color: #8cd0ff; }
+.sheet .help-hero p { margin: 10px 0 0; color: rgba(255, 255, 255, .85); font-size: 15px; line-height: 1.5; }
