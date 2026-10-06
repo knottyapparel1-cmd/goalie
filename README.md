@@ -4,7 +4,7 @@ A mobile-first Progressive Web App (PWA) for tallying habits and behaviors. You 
 
 ## Features
 - **Home**: colored tally cards. Tap a card to log its default count. Use the − / + buttons to take back or add an entry. Hold a card for more options: custom amount, history, edit. Tap the pencil (top left) to enter edit mode: drag cards to reorder them or move them into another group, tap × to delete, and tap DONE when finished.
-- **Create/Edit**: what you want to measure, examples and non-examples (an operational definition), increase or decrease, reset period, which days to track, a **Goal** (amount plus unit: occurrences, minutes, hours, days, or a custom unit) with an auto-generated sentence such as "Your goal is to decrease smoking to 1 occurrence per day.", plus group, default count, logging mode, reminder, badge, color and the card's bottom text. Cards show a ✓ when an increase goal is met and a ! when a decrease goal is exceeded.
+- **Create/Edit**: what you want to measure, examples and non-examples (an operational definition), increase or decrease, reset period, which days to track, a **Goal** (amount plus unit: occurrences, minutes, hours, or a custom unit) with an auto-generated sentence such as "Your goal is to decrease smoking to 1 occurrence per day.", plus group, default count, logging mode, reminder, badge, color and the card's bottom text. Cards show a ✓ when an increase goal is met and a ! when a decrease goal is exceeded.
 - **Statistics**: week/month/year totals and averages as bar charts, plus a time-of-day chart showing when you log. Swipe or use the arrows to see earlier periods.
 - **Settings**: week start day, JSON export/import backup, notifications, **Recently Deleted** (restore deleted goals for 30 days), delete all data.
 - Works offline. Data is stored on the device in localStorage.
@@ -24,7 +24,7 @@ Then open http://localhost:5173.
 Any static HTTPS host works too, such as Netlify Drop or Cloudflare Pages. A service worker (needed for offline use) only runs over HTTPS.
 
 ## Updating
-After you change files, bump `CACHE` in `sw.js` (for example to `goalie-v24`) so installed copies pick up the new version.
+After you change files, bump `CACHE` in `sw.js` (for example to `goalie-v25`) so installed copies pick up the new version.
 
 ## Limitations of a web app on iOS
 - Reminders only fire while the app is open or was recently used. True background push needs a server.

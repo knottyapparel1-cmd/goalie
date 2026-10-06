@@ -669,8 +669,8 @@ function openForm(t) {
   editingId = t ? t.id : null;
   autoCustom = false;
   form = t ? { ...blankForm(), ...JSON.parse(JSON.stringify(t)) } : blankForm();
-  // Weeks / months / years are no longer unit choices; keep the same word as a custom unit.
-  if (['weeks', 'months', 'years'].includes(form.unit)) {
+  // Days / weeks / months / years are no longer unit choices; keep the same word as a custom unit.
+  if (['days', 'weeks', 'months', 'years'].includes(form.unit)) {
     form.customUnit = form.unit;
     form.unit = 'custom';
   }
