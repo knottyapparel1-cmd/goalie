@@ -265,22 +265,30 @@ function renderToday(bumpId) {
   }
   if (groups.has('')) { const none = groups.get(''); groups.delete(''); groups.set('', none); }
 
-  // Section headings only when there are groups and the chips aren't already narrowing to one.
-  const showHeadings = groupNames.length > 0 && !groupFilter;
+  // Section headings when there are groups and the chips aren't already narrowing to one
+  // (always in edit mode, so a group's delete button is reachable).
+  const showHeadings = groupNames.length > 0 && (!groupFilter || editMode);
   const collapsed = new Set(state.settings.collapsedGroups || []);
   for (const [name, tallies] of groups) {
     const key = name || NO_GROUP;
     const isCollapsed = showHeadings && collapsed.has(key);
     if (showHeadings) {
-      list.append(el('button', {
-        type: 'button',
-        class: `group-title${isCollapsed ? ' collapsed' : ''}`,
-        'aria-expanded': String(!isCollapsed),
-        onclick: () => toggleGroup(key),
-      },
-      el('span', { class: 'group-name' }, name ? name.toUpperCase() : 'NO GROUP'),
-      el('span', { class: 'group-count' }, String(tallies.length)),
-      el('span', { class: 'group-chev', 'aria-hidden': 'true' }, '›')));
+      list.append(el('div', { class: `group-title${isCollapsed ? ' collapsed' : ''}` },
+        editMode && name ? el('button', {
+          type: 'button',
+          class: 'group-delete',
+          'aria-label': `Remove group ${name}`,
+          onclick: () => deleteGroup(name),
+        }, '×') : null,
+        el('button', {
+          type: 'button',
+          class: 'group-toggle',
+          'aria-expanded': String(!isCollapsed),
+          onclick: () => toggleGroup(key),
+        },
+        el('span', { class: 'group-name' }, name ? name.toUpperCase() : 'NO GROUP'),
+        el('span', { class: 'group-count' }, String(tallies.length)),
+        el('span', { class: 'group-chev', 'aria-hidden': 'true' }, '›'))));
     }
     const grid = el('div', { class: `grid${isCollapsed ? ' collapsed' : ''}`, 'data-group': name });
     tallies.forEach(t => grid.append(tallyCard(t, t.id === bumpId)));
@@ -313,6 +321,25 @@ function renderGroupChips(groupNames, active) {
   groupNames.forEach(g => box.append(chip(g, g)));
   if (state.tallies.some(t => !t.group)) box.append(chip(NO_GROUP, 'No group'));
   box.querySelector('.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
+// Removes the group name only: its goals stay and move to "No group".
+function deleteGroup(name) {
+  const members = state.tallies.filter(t => t.group === name);
+  const wasFilter = state.settings.groupFilter === name;
+  const wasCollapsed = (state.settings.collapsedGroups || []).includes(name);
+  members.forEach(t => { t.group = ''; });
+  if (wasFilter) state.settings.groupFilter = '';
+  state.settings.collapsedGroups = (state.settings.collapsedGroups || []).filter(g => g !== name);
+  save();
+  renderToday();
+  toast(`Removed group ${name}`, () => {
+    members.forEach(t => { t.group = name; });
+    if (wasFilter) state.settings.groupFilter = name;
+    if (wasCollapsed) state.settings.collapsedGroups = [...(state.settings.collapsedGroups || []), name];
+    save();
+    renderToday();
+  });
 }
 
 function toggleGroup(key) {
