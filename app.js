@@ -692,7 +692,6 @@ function openForm(t) {
 }
 
 function syncForm() {
-  setSeg('reset', form.reset);
   setSeg('logMode', form.logMode);
   setSeg('direction', form.direction);
   setSeg('unit', form.unit);
@@ -793,8 +792,7 @@ $$('#create-form .seg').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   const v = b.dataset.v;
   switch (seg.dataset.field) {
-    case 'reset':
-    case 'per': form.reset = v; break; // "per hour/day/…" and the reset question are the same setting
+    case 'per': form.reset = v; break; // the PER choice is also when the goal's count resets
     case 'logMode': form.logMode = v; autoCustom = false; break;
     case 'bottomMode': form.bottomMode = v; break;
     case 'direction': form.direction = v; break;
