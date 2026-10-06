@@ -1034,3 +1034,11 @@ button {
   position: relative;
 }
 .group-delete::after { content: ""; position: absolute; inset: -8px; }
+
+/* ---------- Tappable stats ---------- */
+.bar-col { cursor: pointer; }
+.bar-col:active .bar-track { filter: brightness(1.15); }
+.scatter .pt { padding: 0; border: 0; cursor: pointer; }
+.scatter .pt::after { content: ""; position: absolute; inset: -10px; } /* finger-sized tap target */
+.stats-hint { margin: 0 2px; font-size: 13px; color: var(--muted); text-align: center; }
+.seg.tabs { gap: 10px; }

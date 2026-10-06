@@ -646,9 +646,14 @@ function historySheet(t) {
 }
 
 // Add an entry on any past date, or edit / delete an existing one.
-function entrySheet(t, entry) {
-  const when = entry ? new Date(entry.ts) : new Date();
+// opts.date: preset day for a new entry; opts.back: sheet to return to (default: history).
+function entrySheet(t, entry, opts = {}) {
+  const back = opts.back || (() => historySheet(t));
   const now = new Date();
+  let when = entry ? new Date(entry.ts) : new Date();
+  if (!entry && opts.date && startOfDay(opts.date) < startOfDay(now)) {
+    when = new Date(opts.date); when.setHours(12, 0, 0, 0); // past day: default to noon
+  }
   const date = el('input', { class: 'text-input', type: 'date', value: toDateInput(when), max: toDateInput(now) });
   const time = el('input', { class: 'text-input', type: 'time', value: toTimeInput(when) });
   const amount = el('input', {
@@ -675,19 +680,19 @@ function entrySheet(t, entry) {
       state.entries.push({ id: uid(), tallyId: t.id, ts, value });
     }
     save();
-    renderToday();
+    refreshAll();
     const label = new Date(ts);
     toast(`${entry ? 'Updated' : 'Added'} ${fmt(value)} on ${MONTH_SHORT[label.getMonth()]} ${label.getDate()}`);
-    switchSheet(() => historySheet(t));
+    switchSheet(back);
   };
 
   const remove = () => {
     const removed = entry;
     state.entries = state.entries.filter(x => x.id !== removed.id);
     save();
-    renderToday();
-    toast('Entry deleted', () => { state.entries.push(removed); save(); renderToday(); });
-    switchSheet(() => historySheet(t));
+    refreshAll();
+    toast('Entry deleted', () => { state.entries.push(removed); save(); refreshAll(); });
+    switchSheet(back);
   };
 
   openSheet(
@@ -698,8 +703,52 @@ function entrySheet(t, entry) {
     error,
     el('button', { class: 'sheet-btn primary', onclick: submit }, entry ? 'Save changes' : 'Add entry'),
     entry ? el('button', { class: 'sheet-btn danger', onclick: remove }, 'Delete entry') : null,
-    el('button', { class: 'sheet-btn', onclick: () => switchSheet(() => historySheet(t)) }, 'Back'),
+    el('button', { class: 'sheet-btn', onclick: () => switchSheet(back) }, 'Back'),
   );
+}
+
+// Re-draw whatever is on screen after entries change.
+function refreshAll() {
+  renderToday();
+  if ($('#screen-stats').classList.contains('active')) renderStats();
+}
+
+// One day's entries for a goal (opened by tapping a bar or point on the Stats page).
+function daySheet(t, day) {
+  const from = startOfDay(day).getTime(), to = addDays(startOfDay(day), 1).getTime();
+  const entries = entriesFor(t.id).filter(e => e.ts >= from && e.ts < to).sort((a, b) => a.ts - b.ts);
+  const total = entries.reduce((s, e) => s + e.value, 0);
+  const again = () => daySheet(t, day);
+  const box = el('div', { class: 'hist' });
+  if (!entries.length) box.append(el('p', {}, 'Nothing logged this day.'));
+  for (const e of entries) {
+    const d = new Date(e.ts);
+    box.append(el('button', { type: 'button', class: 'hist-row', onclick: () => switchSheet(() => entrySheet(t, e, { back: again })) },
+      el('span', { class: 'hist-when' }, el('strong', {}, d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))),
+      el('span', { class: 'hist-amount' }, `${fmt(e.value)} ${unitWord(t, e.value)}`),
+      el('span', { class: 'hist-chev', 'aria-hidden': 'true' }, '›')));
+  }
+  openSheet(
+    el('h3', {}, `${t.name}: ${DAY_NAMES[day.getDay()]}, ${MONTH_SHORT[day.getMonth()]} ${day.getDate()}`),
+    el('p', {}, entries.length ? `${fmt(total)} ${unitWord(t, total)} total. Tap an entry to change it.` : 'Add anything you missed for this day.'),
+    el('button', { class: 'sheet-btn primary', onclick: () => switchSheet(() => entrySheet(t, null, { date: day, back: again })) }, '+ Add entry for this day'),
+    box,
+    el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Done'),
+  );
+}
+
+// Tapping bucket i on a stat card: open that day, or (Year view) jump to that month.
+function pickBucket(t, r, i) {
+  const now = new Date();
+  if (statsState.range === 'year') {
+    statsState.range = 'month';
+    statsState.offset = (r.start.getFullYear() - now.getFullYear()) * 12 + (i - now.getMonth());
+    renderStats();
+    return;
+  }
+  const day = statsState.range === 'day' ? startOfDay(r.start) : addDays(startOfDay(r.start), i);
+  if (day > now) { toast('That day hasn’t happened yet'); return; }
+  daySheet(t, day);
 }
 
 const FILTER_NAMES = { all: 'all', day: 'daily', week: 'weekly', year: 'yearly' };
@@ -1012,6 +1061,10 @@ const statsState = { range: 'week', offset: 0, view: 'bars' };
 function statsRange() {
   const now = new Date();
   const { range, offset } = statsState;
+  if (range === 'day') {
+    const start = addDays(startOfDay(now), offset);
+    return { start, end: addDays(start, 1), buckets: 24 };
+  }
   if (range === 'week') {
     const start = addDays(startOfWeek(now), offset * 7);
     return { start, end: addDays(start, 7), buckets: 7 };
@@ -1029,6 +1082,7 @@ function rangeLabel({ start, end }) {
   const { range } = statsState;
   if (range === 'month') return `${MONTH_LONG[start.getMonth()]} ${start.getFullYear()}`;
   if (range === 'year') return String(start.getFullYear());
+  if (range === 'day') return `${DAY_NAMES[start.getDay()]}, ${MONTH_SHORT[start.getMonth()]} ${start.getDate()}, ${start.getFullYear()}`;
   const last = addDays(end, -1);
   const a = `${MONTH_SHORT[start.getMonth()]} ${start.getDate()}`;
   const b = `${MONTH_SHORT[last.getMonth()]} ${last.getDate()}, ${last.getFullYear()}`;
@@ -1038,10 +1092,14 @@ function rangeLabel({ start, end }) {
 function bucketIndex(ts, start) {
   const d = new Date(ts);
   if (statsState.range === 'year') return d.getMonth();
+  if (statsState.range === 'day') return d.getHours();
   return Math.round((startOfDay(d) - startOfDay(start)) / DAY_MS);
 }
 
 function bucketLabels(r) {
+  if (statsState.range === 'day') {
+    return Array.from({ length: 24 }, (_, h) => ({ 0: '12a', 6: '6a', 12: '12p', 18: '6p' }[h] || ''));
+  }
   if (statsState.range === 'week') {
     return Array.from({ length: 7 }, (_, i) => DAY_SHORT[(state.settings.weekStart + i) % 7]);
   }
@@ -1074,6 +1132,7 @@ function renderStats() {
     return;
   }
 
+  list.append(el('p', { class: 'stats-hint' }, statsState.range === 'year' ? 'Tap a month to zoom in.' : 'Tap a bar or point to see or edit that day.'));
   const startMs = r.start.getTime(), endMs = r.end.getTime();
   const currentIdx = Date.now() >= startMs && Date.now() < endMs ? bucketIndex(Date.now(), r.start) : -1;
   const periodWord = statsState.range.toUpperCase();
@@ -1081,33 +1140,35 @@ function renderStats() {
   for (const t of state.tallies) {
     const entries = entriesFor(t.id).filter(e => e.ts >= startMs && e.ts < endMs);
     const sums = new Array(r.buckets).fill(0);
-    const activeDays = new Set();
+    const isDay = statsState.range === 'day';
+    const active = new Set();
     let total = 0;
     for (const e of entries) {
       sums[bucketIndex(e.ts, r.start)] += e.value;
-      activeDays.add(dayKey(e.ts));
+      active.add(isDay ? new Date(e.ts).getHours() : dayKey(e.ts));
       total += e.value;
     }
-    const avg = activeDays.size ? total / activeDays.size : 0;
+    const avg = active.size ? total / active.size : 0;
 
     const card = el('div', { class: `stat-card ${inkClass(t.color)}`, style: `background:${t.color}` },
       el('h3', {}, t.name),
-      el('div', { class: 'stat-sub' }, `${fmt(total)} ${unitWord(t, total).toUpperCase()} · ${fmt(avg)} PER ACTIVE DAY`));
+      el('div', { class: 'stat-sub' }, `${fmt(total)} ${unitWord(t, total).toUpperCase()} · ${fmt(avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
 
+    const pick = i => pickBucket(t, r, i);
     card.append(statsState.view === 'bars'
-      ? barChart(sums, bucketLabels(r), currentIdx)
-      : lineChart(t, sums, bucketLabels(r), currentIdx));
+      ? barChart(sums, bucketLabels(r), currentIdx, pick)
+      : lineChart(t, sums, bucketLabels(r), currentIdx, pick));
     list.append(card);
   }
 }
 
-function barChart(sums, labels, currentIdx) {
+function barChart(sums, labels, currentIdx, onPick) {
   const max = niceMax(Math.max(0, ...sums));
   const yAxis = el('div', { class: 'y-axis', style: 'height:170px' },
     el('span', { style: 'top:0' }, fmt(max)),
     el('span', { style: 'top:50%' }, fmt(max / 2)));
   const bars = el('div', { class: 'bars' },
-    sums.map((v, i) => el('div', { class: `bar-col${i === currentIdx ? ' current' : ''}` },
+    sums.map((v, i) => el('div', { class: `bar-col${i === currentIdx ? ' current' : ''}`, onclick: () => onPick(i) },
       el('div', { class: 'bar-track' },
         el('div', { class: 'bar-fill', style: `height:${Math.max(0, Math.min(100, (v / max) * 100))}%` })))));
   const xl = el('div', { class: 'x-labels' }, labels.map(l => el('span', { style: 'display:flex;justify-content:center' }, l)));
@@ -1115,7 +1176,7 @@ function barChart(sums, labels, currentIdx) {
 }
 
 // Line chart: y = amount in the goal's own unit, one point per day (or per month in Year view).
-function lineChart(t, sums, labels, currentIdx) {
+function lineChart(t, sums, labels, currentIdx, onPick) {
   const n = sums.length;
   const span = n - 1;
   // Don't draw into the future: stop at today in the current period.
@@ -1123,12 +1184,15 @@ function lineChart(t, sums, labels, currentIdx) {
 
   // Dashed goal line only when the goal's period matches the chart's steps.
   const { range } = statsState;
-  const goalFits = t.target > 0 && ((t.reset === 'day' && range !== 'year') || (t.reset === 'month' && range === 'year'));
+  const goalFits = t.target > 0 && (
+    (t.reset === 'hour' && range === 'day') ||
+    (t.reset === 'day' && (range === 'week' || range === 'month')) ||
+    (t.reset === 'month' && range === 'year'));
   const max = niceMax(Math.max(0, ...sums, goalFits ? t.target : 0));
   const yOf = v => 100 - (v / max) * 100;
   const xOf = i => (span ? (i / span) * 100 : 50);
 
-  const colw = range === 'month' ? (7 / span) * 100 : 100 / span;
+  const colw = range === 'month' ? (7 / span) * 100 : range === 'day' ? (6 / span) * 100 : 100 / span;
   const plot = el('div', { class: 'scatter', style: `--colw:${colw}%` });
   const points = sums.slice(0, last + 1).map((v, i) => ({ x: xOf(i), y: yOf(v), v, i }));
 
@@ -1155,7 +1219,7 @@ function lineChart(t, sums, labels, currentIdx) {
 
   const unit = unitLabel(t);
   for (const p of points) {
-    plot.append(el('div', { class: 'pt', style: `left:${p.x}%;top:${p.y}%`, title: `${labels[p.i] || ''} ${fmt(p.v)} ${unitWord(t, p.v)}`.trim() }));
+    plot.append(el('button', { type: 'button', class: 'pt', style: `left:${p.x}%;top:${p.y}%`, 'aria-label': `${fmt(p.v)} ${unitWord(t, p.v)}`, onclick: () => onPick(p.i) }));
   }
 
   const yAxis = el('div', { class: 'y-axis', style: 'height:170px;width:34px' },
