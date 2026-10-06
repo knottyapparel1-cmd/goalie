@@ -1,0 +1,8 @@
+# Reference screenshots — private, not part of the app
+*.png
+*.PNG
+!icons/*.png
+
+# Local tooling
+.claude/
+node_modules/

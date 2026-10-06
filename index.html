@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Goalie</title>
+  <meta name="description" content="Set goals for the behaviors you want to grow or cut back, and watch your progress.">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Goalie">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- HOME -->
+  <section id="screen-today" class="screen active">
+    <header class="today-header">
+      <button class="icon-btn edit-toggle" id="btn-edit" aria-label="Edit goals" aria-pressed="false">
+        <svg class="edit-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M17.6 3.4a2 2 0 0 1 2.9 2.9L12 14.8l-3.8.9.9-3.8 8.5-8.5z"/></svg>
+        <span class="edit-done">DONE</span>
+      </button>
+      <h1>GOALIE</h1>
+      <div class="header-actions">
+        <button class="icon-btn muted" id="btn-help" aria-label="Help">?</button>
+        <span class="divider"></span>
+        <button class="icon-btn" id="btn-layout" aria-label="Toggle layout">
+          <svg viewBox="0 0 24 24" width="26" height="26"><circle cx="7" cy="7" r="3.2" fill="#6b7280"/><circle cx="17" cy="7" r="3.2" fill="#c4c8cf"/><circle cx="7" cy="17" r="3.2" fill="#c4c8cf"/><circle cx="17" cy="17" r="3.2" fill="#6b7280"/></svg>
+        </button>
+      </div>
+    </header>
+    <div id="group-chips" class="group-chips hidden" role="tablist" aria-label="Groups"></div>
+    <main id="tally-list" class="tally-list"></main>
+    <div class="filter-bar" id="goal-filter" role="tablist" aria-label="Show goals">
+      <button type="button" role="tab" data-v="all">ALL</button>
+      <button type="button" role="tab" data-v="day">DAILY</button>
+      <button type="button" role="tab" data-v="week">WEEKLY</button>
+      <button type="button" role="tab" data-v="year">YEARLY</button>
+    </div>
+    <nav class="bottom-bar">
+      <button class="icon-btn" id="btn-settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="#c4c8cf"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5L19.4 13zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-add" aria-label="Create goal">
+        <svg viewBox="0 0 24 24" width="34" height="34"><path d="M12 4v16M4 12h16" stroke="#b3b8c0" stroke-width="2.6" stroke-linecap="round"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-stats" aria-label="Statistics">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="#c4c8cf"><rect x="3" y="9" width="4" height="12" rx="1"/><rect x="10" y="3" width="4" height="18" rx="1"/><rect x="17" y="12" width="4" height="9" rx="1"/></svg>
+      </button>
+    </nav>
+  </section>
+
+  <!-- CREATE / EDIT -->
+  <section id="screen-create" class="screen modal">
+    <div class="modal-head">
+      <h1 id="create-title">CREATE</h1>
+      <button class="close-btn" data-close aria-label="Close">&times;</button>
+    </div>
+    <form id="create-form" class="form-scroll" autocomplete="off">
+      <label class="field-label" for="f-name">WHAT DO YOU WANT TO MEASURE?</label>
+      <div class="name-row">
+        <input id="f-name" class="text-input" type="text" maxlength="40" placeholder="Smoking, Reading, Workout, etc.">
+        <button type="button" class="icon-btn" id="btn-idea" aria-label="Suggestions">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#1c2a4a" stroke-width="1.8" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg>
+        </button>
+      </div>
+      <div id="idea-chips" class="chips hidden"></div>
+
+      <label class="field-label" for="f-examples">EXAMPLES</label>
+      <textarea id="f-examples" class="text-area" rows="3" maxlength="500" placeholder="What counts? e.g. Lighting a cigarette, taking a puff from a vape"></textarea>
+
+      <label class="field-label" for="f-nonexamples">NON-EXAMPLES</label>
+      <textarea id="f-nonexamples" class="text-area" rows="3" maxlength="500" placeholder="What doesn’t count? e.g. Holding an unlit cigarette, nicotine gum"></textarea>
+
+      <div class="field-label">DO YOU WANT TO INCREASE OR DECREASE THIS BEHAVIOR?</div>
+      <div class="seg pills" data-field="direction">
+        <button type="button" data-v="increase">INCREASE</button>
+        <button type="button" data-v="decrease">DECREASE</button>
+      </div>
+
+      <div class="field-label">HOW OFTEN DOES YOUR GOAL RESET?</div>
+      <div class="seg pills units" data-field="reset">
+        <button type="button" data-v="hour">HOURLY</button>
+        <button type="button" data-v="day">DAILY</button>
+        <button type="button" data-v="week">WEEKLY</button>
+        <button type="button" data-v="month">MONTHLY</button>
+        <button type="button" data-v="year">YEARLY</button>
+        <button type="button" data-v="never">NEVER</button>
+      </div>
+
+      <div class="field-label">WHICH DAYS WILL BE MEASURED?</div>
+      <div class="days multi" data-field="days">
+        <button type="button" data-v="0">SUN</button>
+        <button type="button" data-v="1">MON</button>
+        <button type="button" data-v="2">TUE</button>
+        <button type="button" data-v="3">WED</button>
+        <button type="button" data-v="4">THU</button>
+        <button type="button" data-v="5">FRI</button>
+        <button type="button" data-v="6">SAT</button>
+      </div>
+
+      <label class="field-label" for="f-goal">GOAL</label>
+      <div class="goal-row">
+        <input id="f-goal" class="text-input goal-input" type="number" inputmode="decimal" step="any" min="0" placeholder="#">
+        <span id="goal-per" class="goal-per">PER DAY</span>
+      </div>
+      <div class="seg pills units" data-field="unit">
+        <button type="button" data-v="occurrences">OCCURRENCES</button>
+        <button type="button" data-v="minutes">MINUTES</button>
+        <button type="button" data-v="hours">HOURS</button>
+        <button type="button" data-v="days">DAYS</button>
+        <button type="button" data-v="weeks">WEEKS</button>
+        <button type="button" data-v="months">MONTHS</button>
+        <button type="button" data-v="years">YEARS</button>
+        <button type="button" data-v="custom">CUSTOM</button>
+      </div>
+      <div id="per-row" class="per-row hidden">
+        <span class="per-label">PER</span>
+        <div class="seg pills units" data-field="per">
+          <button type="button" data-v="hour">HOUR</button>
+          <button type="button" data-v="day">DAY</button>
+          <button type="button" data-v="week">WEEK</button>
+          <button type="button" data-v="month">MONTH</button>
+          <button type="button" data-v="year">YEAR</button>
+        </div>
+      </div>
+      <input id="f-unit" class="text-input full hidden unit-input" type="text" maxlength="24" placeholder="What are you measuring? e.g. cigarettes, pages">
+      <p id="goal-desc" class="goal-desc"></p>
+
+      <div class="field-label">GROUP</div>
+      <button type="button" class="link-row" id="btn-group"><span id="group-value">NONE</span><span class="chev">&rsaquo;</span></button>
+
+      <label class="field-label" for="f-default">AMOUNT PER TAP</label>
+      <input id="f-default" class="text-input full" type="number" inputmode="decimal" step="any" value="1">
+
+      <div class="field-label">WHEN YOU TAP +</div>
+      <div class="seg pills" data-field="logMode">
+        <button type="button" data-v="default">ADD THE USUAL AMOUNT</button>
+        <button type="button" data-v="custom">ALLOW ME TO ENTER IT MANUALLY</button>
+      </div>
+
+      <div class="field-label">REMINDERS</div>
+      <button type="button" class="link-row" id="btn-reminder"><span id="reminder-value">NONE</span><span class="chev">&rsaquo;</span></button>
+
+
+      <div class="field-label">PICK YOUR GOAL’S COLOR</div>
+      <div class="colors" id="color-grid"></div>
+
+      <div class="field-label">WHAT SHOWS UNDER THE COUNT?</div>
+      <div class="seg pills" data-field="bottomMode">
+        <button type="button" data-v="unit" id="bottom-unit-btn">MEASUREMENT</button>
+        <button type="button" data-v="last">LAST CHECK-IN</button>
+        <button type="button" data-v="custom">MY OWN TEXT</button>
+      </div>
+      <input id="f-bottom" class="text-input full hidden" type="text" maxlength="30" placeholder="e.g. Minutes moved">
+
+      <button type="button" id="btn-delete" class="danger-link hidden">DELETE GOAL</button>
+      <div class="form-spacer"></div>
+    </form>
+    <div class="submit-wrap">
+      <button id="btn-submit" class="submit-btn" disabled>ADD</button>
+    </div>
+  </section>
+
+  <!-- STATISTICS -->
+  <section id="screen-stats" class="screen modal">
+    <div class="modal-head">
+      <h1 id="stats-title" class="stats-title">Here are your STATS!</h1>
+      <button class="close-btn" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="range-row">
+      <button class="nav-arrow" id="range-prev" aria-label="Previous">&lsaquo;</button>
+      <h2 id="range-label"></h2>
+      <button class="nav-arrow" id="range-next" aria-label="Next">&rsaquo;</button>
+    </div>
+    <div class="seg tabs" id="range-tabs">
+      <button type="button" data-v="week">WEEK</button>
+      <button type="button" data-v="month">MONTH</button>
+      <button type="button" data-v="year">YEAR</button>
+    </div>
+    <div id="stats-list" class="stats-list"></div>
+    <nav class="stats-bar">
+      <button class="icon-btn view-btn" data-view="bars" aria-label="Totals chart">
+        <svg viewBox="0 0 32 32" width="34" height="34" fill="none" stroke="#9aa0a8" stroke-width="1.4"><rect x="4" y="12" width="5" height="16" rx="1"/><rect x="10.5" y="4" width="5" height="24" rx="1"/><rect x="17" y="18" width="5" height="10" rx="1"/><rect x="23.5" y="10" width="5" height="18" rx="1"/></svg>
+        <span class="dot"></span>
+      </button>
+      <button class="icon-btn view-btn" data-view="line" aria-label="Line chart">
+        <svg viewBox="0 0 32 32" width="34" height="34" fill="none" stroke="#9aa0a8" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v24h24"/><path d="M8 22l6-8 5 4 8-10"/><circle cx="14" cy="14" r="1.6" fill="#9aa0a8"/><circle cx="19" cy="18" r="1.6" fill="#9aa0a8"/><circle cx="27" cy="8" r="1.6" fill="#9aa0a8"/></svg>
+        <span class="dot"></span>
+      </button>
+    </nav>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="screen-settings" class="screen modal">
+    <div class="modal-head">
+      <h1>SETTINGS</h1>
+      <button class="close-btn" data-close aria-label="Close">&times;</button>
+    </div>
+    <div class="form-scroll">
+      <label class="field-label first" for="set-name">NAME</label>
+      <input id="set-name" class="text-input full" type="text" maxlength="30" autocomplete="given-name" autocapitalize="words" placeholder="Your first name">
+
+      <div class="field-label">WEEK STARTS ON</div>
+      <div class="seg pills" id="set-weekstart">
+        <button type="button" data-v="0">SUNDAY</button>
+        <button type="button" data-v="1">MONDAY</button>
+      </div>
+
+      <div class="field-label">BACKUP</div>
+      <button class="row-btn" id="btn-export">Export data (JSON)</button>
+      <label class="row-btn" for="import-file">Import data (JSON)</label>
+      <input type="file" id="import-file" accept="application/json,.json" hidden>
+
+      <div class="field-label">NOTIFICATIONS</div>
+      <button class="row-btn" id="btn-notify">Turn on reminder banners</button>
+      <p class="note" id="notify-status"></p>
+
+      <div class="field-label">RECENTLY DELETED</div>
+      <div id="trash-list" class="trash-list"></div>
+      <p class="note">Deleted goals are kept here for 30 days, then removed for good.</p>
+
+      <div class="field-label">DANGER ZONE</div>
+      <button class="row-btn danger" id="btn-wipe">Delete all data</button>
+
+      <p class="note">Data is stored only on this device. Export regularly if you want a backup.</p>
+    </div>
+  </section>
+
+  <!-- Sheet (action sheets, prompts) -->
+  <div id="sheet-backdrop" class="sheet-backdrop"></div>
+  <div id="sheet" class="sheet" role="dialog" aria-modal="true"></div>
+
+  <div id="toast" class="toast"></div>
+  <div id="banner" class="banner" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
