@@ -611,27 +611,94 @@ function tallyMenu(t) {
   );
 }
 
+const pad2 = n => String(n).padStart(2, '0');
+const toDateInput = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const toTimeInput = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Swap one sheet for another after the closing animation.
+function switchSheet(fn) { closeSheet(); setTimeout(fn, 300); }
+
+// Every entry for a goal, newest first. Tap one to change its date, time or amount.
 function historySheet(t) {
-  const rows = entriesFor(t.id).sort((a, b) => b.ts - a.ts).slice(0, 100);
+  const all = entriesFor(t.id).sort((a, b) => b.ts - a.ts);
+  const shown = all.slice(0, 200);
   const box = el('div', { class: 'hist' });
-  const draw = () => {
-    box.innerHTML = '';
-    const current = entriesFor(t.id).sort((a, b) => b.ts - a.ts).slice(0, 100);
-    if (!current.length) box.append(el('p', {}, 'No entries yet.'));
-    for (const e of current) {
-      const d = new Date(e.ts);
-      const when = `${MONTH_SHORT[d.getMonth()]} ${d.getDate()}, ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
-      box.append(el('div', { class: 'hist-row' },
-        el('span', {}, `${when} · ${fmt(e.value)}`),
-        el('button', { onclick: () => { state.entries = state.entries.filter(x => x.id !== e.id); save(); renderToday(); draw(); } }, 'Delete')));
-    }
-  };
-  draw();
+  if (!shown.length) box.append(el('p', {}, 'No entries yet.'));
+  for (const e of shown) {
+    const d = new Date(e.ts);
+    box.append(el('button', { type: 'button', class: 'hist-row', onclick: () => switchSheet(() => entrySheet(t, e)) },
+      el('span', { class: 'hist-when' },
+        el('strong', {}, `${DAY_NAMES[d.getDay()]}, ${MONTH_SHORT[d.getMonth()]} ${d.getDate()}`),
+        d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '',
+        el('span', {}, d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))),
+      el('span', { class: 'hist-amount' }, `${fmt(e.value)} ${unitWord(t, e.value)}`),
+      el('span', { class: 'hist-chev', 'aria-hidden': 'true' }, '›')));
+  }
   openSheet(
     el('h3', {}, `${t.name} history`),
-    el('p', {}, rows.length >= 100 ? 'Most recent 100 entries' : `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`),
+    el('p', {}, all.length > shown.length ? `Most recent ${shown.length} of ${all.length} entries. Tap one to edit it.`
+      : all.length ? `${all.length} entr${all.length === 1 ? 'y' : 'ies'}. Tap one to edit it.` : 'Add entries for days you missed.'),
+    el('button', { class: 'sheet-btn primary', onclick: () => switchSheet(() => entrySheet(t, null)) }, '+ Add past entry'),
     box,
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Done'),
+  );
+}
+
+// Add an entry on any past date, or edit / delete an existing one.
+function entrySheet(t, entry) {
+  const when = entry ? new Date(entry.ts) : new Date();
+  const now = new Date();
+  const date = el('input', { class: 'text-input', type: 'date', value: toDateInput(when), max: toDateInput(now) });
+  const time = el('input', { class: 'text-input', type: 'time', value: toTimeInput(when) });
+  const amount = el('input', {
+    class: 'text-input', type: 'number', inputmode: 'decimal', step: 'any',
+    value: entry ? fmt(entry.value) : fmt(t.defaultCount || 1),
+  });
+  const error = el('p', { class: 'form-error hidden' });
+
+  const submit = () => {
+    const [y, m, d] = (date.value || '').split('-').map(Number);
+    const [hh, mm] = (time.value || '12:00').split(':').map(Number);
+    const ts = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime();
+    const value = parseFloat(amount.value);
+    let problem = '';
+    if (!date.value || !isFinite(ts)) problem = 'Pick a date.';
+    else if (ts > Date.now() + 60000) problem = 'That’s in the future. Pick a date and time that already happened.';
+    else if (!isFinite(value) || value === 0) problem = 'Enter an amount.';
+    if (problem) { error.textContent = problem; error.classList.remove('hidden'); return; }
+
+    if (entry) {
+      entry.ts = ts;
+      entry.value = value;
+    } else {
+      state.entries.push({ id: uid(), tallyId: t.id, ts, value });
+    }
+    save();
+    renderToday();
+    const label = new Date(ts);
+    toast(`${entry ? 'Updated' : 'Added'} ${fmt(value)} on ${MONTH_SHORT[label.getMonth()]} ${label.getDate()}`);
+    switchSheet(() => historySheet(t));
+  };
+
+  const remove = () => {
+    const removed = entry;
+    state.entries = state.entries.filter(x => x.id !== removed.id);
+    save();
+    renderToday();
+    toast('Entry deleted', () => { state.entries.push(removed); save(); renderToday(); });
+    switchSheet(() => historySheet(t));
+  };
+
+  openSheet(
+    el('h3', {}, entry ? `Edit ${t.name} entry` : `Add past ${t.name} entry`),
+    el('label', { class: 'sheet-label' }, 'DATE', date),
+    el('label', { class: 'sheet-label' }, 'TIME', time),
+    el('label', { class: 'sheet-label' }, capitalize(unitLabel(t)).toUpperCase(), amount),
+    error,
+    el('button', { class: 'sheet-btn primary', onclick: submit }, entry ? 'Save changes' : 'Add entry'),
+    entry ? el('button', { class: 'sheet-btn danger', onclick: remove }, 'Delete entry') : null,
+    el('button', { class: 'sheet-btn', onclick: () => switchSheet(() => historySheet(t)) }, 'Back'),
   );
 }
 
@@ -705,6 +772,7 @@ function openForm(t) {
   $('#create-title').textContent = t ? 'EDIT' : 'CREATE';
   $('#btn-submit').textContent = t ? 'SAVE' : 'ADD';
   $('#btn-delete').classList.toggle('hidden', !t);
+  $('#history-section').classList.toggle('hidden', !t);
   $('#idea-chips').classList.add('hidden');
   $('#f-name').value = form.name;
   $('#f-default').value = form.defaultCount;
@@ -924,6 +992,11 @@ $('#btn-submit').addEventListener('click', () => {
   save();
   renderToday();
   closeScreen('create');
+});
+
+$('#btn-history').addEventListener('click', () => {
+  const t = state.tallies.find(x => x.id === editingId);
+  if (t) historySheet(t);
 });
 
 $('#btn-delete').addEventListener('click', () => {

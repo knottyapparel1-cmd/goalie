@@ -656,13 +656,23 @@ button {
 .sheet .hist { max-height: 40vh; overflow-y: auto; margin: 8px 0; }
 .hist-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 10px 2px;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 2px;
   border-bottom: 1px solid var(--line);
   font-size: 15px;
+  text-align: left;
 }
-.hist-row button { color: #e5484d; font-size: 14px; font-weight: 600; padding: 4px 8px; }
+.hist-row:active { background: #f6f6f7; }
+.hist-when { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.hist-when strong { font-weight: 700; }
+.hist-when span { color: var(--muted); font-size: 14px; }
+.hist-amount { flex: none; font-weight: 700; }
+.hist-chev { flex: none; color: var(--muted); font-size: 22px; line-height: 1; }
+.sheet-label { display: block; margin-top: 12px; font-size: 12px; font-weight: 800; letter-spacing: .1em; color: #6b7280; }
+.sheet-label .text-input { margin-top: 6px; }
+.form-error { color: #e5484d !important; font-weight: 600; margin: 10px 0 0 !important; }
 
 /* ---------- Toast ---------- */
 .toast {
