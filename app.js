@@ -591,24 +591,23 @@ function onTap(t) {
 }
 
 function promptValue(t) {
-  const input = el('input', {
-    class: 'text-input', type: 'number', inputmode: 'decimal', step: 'any',
-    placeholder: `${capitalize(unitLabel(t))} (default ${fmt(t.defaultCount || 1)})`,
-  });
+  const field = amountField(t, null, { placeholder: `${capitalize(unitLabel(t))} (default ${num(t, t.defaultCount || 1)})` });
   const submit = () => {
-    const v = input.value === '' ? (t.defaultCount || 1) : parseFloat(input.value);
-    if (!isFinite(v)) return;
+    const read = field.read();
+    const v = read == null ? (t.defaultCount || 1) : read;
+    if (!isFinite(v) || v === 0) return;
     closeSheet();
     logEntry(t, v);
   };
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  field.node.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
   openSheet(
     el('h3', {}, `Log ${t.name}`),
-    input,
+    isDuration(t) ? el('p', {}, `Leave blank to log ${durationLong(t, t.defaultCount || 1)}.`) : null,
+    field.node,
     el('button', { class: 'sheet-btn primary', onclick: submit }, 'Log'),
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
   );
-  setTimeout(() => input.focus(), 250);
+  setTimeout(() => field.focus(), 250);
 }
 
 function tallyMenu(t) {
@@ -675,21 +674,18 @@ function entrySheet(t, entry, opts = {}) {
   }
   const date = el('input', { class: 'text-input', type: 'date', value: toDateInput(when), max: toDateInput(now) });
   const time = el('input', { class: 'text-input', type: 'time', value: toTimeInput(when) });
-  const amount = el('input', {
-    class: 'text-input', type: 'number', inputmode: 'decimal', step: 'any',
-    value: entry ? fmt(entry.value) : fmt(t.defaultCount || 1),
-  });
+  const amount = amountField(t, entry ? entry.value : (t.defaultCount || 1));
   const error = el('p', { class: 'form-error hidden' });
 
   const submit = () => {
     const [y, m, d] = (date.value || '').split('-').map(Number);
     const [hh, mm] = (time.value || '12:00').split(':').map(Number);
     const ts = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime();
-    const value = parseFloat(amount.value);
+    const value = amount.read();
     let problem = '';
     if (!date.value || !isFinite(ts)) problem = 'Pick a date.';
     else if (ts > Date.now() + 60000) problem = 'That’s in the future. Pick a date and time that already happened.';
-    else if (!isFinite(value) || value === 0) problem = 'Enter an amount.';
+    else if (value == null || !isFinite(value) || value === 0) problem = 'Enter an amount.';
     if (problem) { error.textContent = problem; error.classList.remove('hidden'); return; }
 
     if (entry) {
@@ -718,7 +714,7 @@ function entrySheet(t, entry, opts = {}) {
     el('h3', {}, entry ? `Edit ${t.name} entry` : `Add past ${t.name} entry`),
     el('label', { class: 'sheet-label' }, 'DATE', date),
     el('label', { class: 'sheet-label' }, 'TIME', time),
-    el('label', { class: 'sheet-label' }, capitalize(unitLabel(t)).toUpperCase(), amount),
+    el('div', { class: 'sheet-label' }, capitalize(unitLabel(t)).toUpperCase(), amount.node),
     error,
     el('button', { class: 'sheet-btn primary', onclick: submit }, entry ? 'Save changes' : 'Add entry'),
     entry ? el('button', { class: 'sheet-btn danger', onclick: remove }, 'Delete entry') : null,
@@ -909,12 +905,67 @@ function unitWord(t, n) {
 const isMoney = t => t.unit === 'dollars';
 function money(n) { return '$' + (Number.isInteger(n) ? String(n) : n.toFixed(2)); }
 
-// An amount with its unit: "$12.50", "3 miles", "1 occurrence".
-function amountText(t, n) {
-  return isMoney(t) ? money(n) : `${fmt(n)} ${unitWord(t, n)}`;
+// Minutes goals store minutes (12.5 = 12 min 30 sec); hours goals store hours (1.25 = 1 hr 15 min).
+const isDuration = t => t.unit === 'minutes' || t.unit === 'hours';
+function splitDuration(n) {
+  const sign = n < 0 ? -1 : 1;
+  let big = Math.floor(Math.abs(n) + 1e-9);
+  let small = Math.round((Math.abs(n) - big) * 60);
+  if (small === 60) { big += 1; small = 0; }
+  return [sign * big, small];
 }
-// Just the number, as a dollar amount for money goals.
-function num(t, n) { return isMoney(t) ? money(n) : fmt(n); }
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+// Compact: "12m 30s" / "1h 15m"
+function durationShort(t, n) {
+  const [big, small] = splitDuration(n);
+  const [a, b] = t.unit === 'hours' ? ['h', 'm'] : ['m', 's'];
+  return small ? `${big}${a} ${small}${b}` : `${big}${a}`;
+}
+// Sentence: "12 minutes 30 seconds" / "1 hour 15 minutes"
+function durationLong(t, n) {
+  const [big, small] = splitDuration(n);
+  const [a, b] = t.unit === 'hours' ? ['hour', 'minute'] : ['minute', 'second'];
+  return small ? `${plural(big, a)} ${plural(small, b)}` : plural(big, a);
+}
+
+// An amount with its unit: "$12.50", "3 miles", "1 occurrence", "12m 30s".
+function amountText(t, n) {
+  if (isMoney(t)) return money(n);
+  if (isDuration(t)) return durationShort(t, n);
+  return `${fmt(n)} ${unitWord(t, n)}`;
+}
+// Just the number: dollars for money goals, clock style (12:30) for time goals.
+function num(t, n) {
+  if (isMoney(t)) return money(n);
+  if (isDuration(t)) { const [big, small] = splitDuration(n); return `${big}:${pad2(small)}`; }
+  return fmt(n);
+}
+
+// Amount input: one number box, or two boxes (min + sec / hr + min) for time goals.
+function amountField(t, value, { placeholder = '' } = {}) {
+  if (!isDuration(t)) {
+    const input = el('input', { class: 'text-input', type: 'number', inputmode: 'decimal', step: 'any', placeholder });
+    if (value != null) input.value = fmt(value);
+    return { node: input, focus: () => input.focus(), read: () => (input.value === '' ? null : parseFloat(input.value)) };
+  }
+  const [bigLabel, smallLabel] = t.unit === 'hours' ? ['HR', 'MIN'] : ['MIN', 'SEC'];
+  const big = el('input', { class: 'text-input', type: 'number', inputmode: 'numeric', min: '0', step: '1', placeholder: '0' });
+  const small = el('input', { class: 'text-input', type: 'number', inputmode: 'numeric', min: '0', max: '59', step: '1', placeholder: '0' });
+  if (value != null) { const [b, s] = splitDuration(value); big.value = String(b); small.value = s ? String(s) : ''; }
+  const node = el('div', { class: 'duration-field' },
+    el('label', {}, big, el('span', {}, bigLabel)),
+    el('label', {}, small, el('span', {}, smallLabel)));
+  return {
+    node,
+    focus: () => big.focus(),
+    read: () => {
+      if (big.value === '' && small.value === '') return null;
+      const b = parseFloat(big.value || '0'), s = parseFloat(small.value || '0');
+      if (!isFinite(b) || !isFinite(s) || b < 0 || s < 0) return NaN;
+      return b + s / 60; // seconds beyond 59 simply roll over into minutes
+    },
+  };
+}
 
 function joinList(items) {
   if (items.length <= 1) return items.join('');
@@ -933,7 +984,7 @@ function goalDescription(f) {
   const name = (f.name || '').trim().toLowerCase();
   if (!name) return null;
   let text = `Your goal is to ${f.direction} ${name}`;
-  if (f.target > 0) text += ` to ${amountText(f, f.target)}${PER_PHRASE[f.reset]}`;
+  if (f.target > 0) text += ` to ${isDuration(f) ? durationLong(f, f.target) : amountText(f, f.target)}${PER_PHRASE[f.reset]}`;
   const days = daysPhrase(f.days);
   if (days) text += (f.reset === 'day' || f.reset === 'hour' || f.reset === 'minute') ? ` on ${days}` : `, tracked on ${days}`;
   return text + '.';
@@ -1197,7 +1248,7 @@ function renderStats() {
 
     const card = el('div', { class: `stat-card ${inkClass(t.color)}`, style: `background:${t.color}` },
       el('h3', {}, t.name),
-      el('div', { class: 'stat-sub' }, `${amountText(t, total).toUpperCase()}${isMoney(t) ? ' TOTAL' : ''} · ${num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
+      el('div', { class: 'stat-sub' }, `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
 
     const pick = i => pickBucket(t, r, i);
     card.append(statsState.view === 'bars'
