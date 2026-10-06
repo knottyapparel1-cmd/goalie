@@ -32,9 +32,28 @@ function inkClass(hex) {
   return navyContrast >= whiteContrast ? 'on-light' : 'on-dark';
 }
 
+// Idea chips. Personal-growth goals first; each fills in a sensible starting setup.
 const SUGGESTIONS = [
-  'Smoking', 'Vaping', 'Phone use', 'Water', 'Coffee', 'Workout', 'Reading', 'Meditate', 'Push-ups', 'Steps', 'Walk',
-  'Journal', 'Vitamins', 'Stretch', 'Sleep', 'Screen-free hour', 'Practice', 'No sugar', 'Floss',
+  { name: 'Running', unit: 'custom', customUnit: 'miles' },
+  { name: 'Meet someone new' },
+  { name: 'Reading', unit: 'custom', customUnit: 'pages' },
+  { name: 'Healthy eating', unit: 'custom', customUnit: 'healthy meals' },
+  { name: 'Saving money', unit: 'dollars' },
+  { name: 'Workout', unit: 'minutes' },
+  { name: 'Meditate', unit: 'minutes' },
+  { name: 'Journal' },
+  { name: 'Drink water', unit: 'custom', customUnit: 'glasses' },
+  { name: 'Learn something new' },
+  { name: 'Call a friend or family member' },
+  { name: 'Practice gratitude' },
+  { name: 'Walk', unit: 'custom', customUnit: 'steps' },
+  { name: 'Stretch', unit: 'minutes' },
+  { name: 'Volunteer', unit: 'hours' },
+  { name: 'Practice a skill', unit: 'minutes' },
+  { name: 'Smoking', direction: 'decrease' },
+  { name: 'Vaping', direction: 'decrease' },
+  { name: 'Phone use', unit: 'minutes', direction: 'decrease' },
+  { name: 'Junk food', direction: 'decrease' },
 ];
 
 const DEFAULT_STATE = () => ({
@@ -164,7 +183,7 @@ function logEntry(t, value) {
   state.entries.push(entry);
   save();
   renderToday(t.id);
-  toast(`${t.name} ${value >= 0 ? '+' : ''}${fmt(value)}`, () => {
+  toast(`${t.name} ${value >= 0 ? '+' : '−'}${num(t, Math.abs(value))}`, () => {
     state.entries = state.entries.filter(e => e.id !== entry.id);
     save();
     renderToday();
@@ -352,7 +371,7 @@ function toggleGroup(key) {
 
 function tallyCard(t, bump) {
   const count = currentCount(t);
-  const countText = t.target ? `${fmt(count)}/${fmt(t.target)}` : fmt(count);
+  const countText = t.target ? `${num(t, count)}/${num(t, t.target)}` : num(t, count);
   const sizeClass = countText.length > 7 ? 'tiny' : countText.length > 5 ? 'small' : '';
   const tracksToday = !t.days || t.days.includes(new Date().getDay());
 
@@ -543,7 +562,7 @@ function takeBack(t) {
   state.entries = state.entries.filter(e => e.id !== last.id);
   save();
   renderToday(t.id);
-  toast(`${t.name} −${fmt(last.value)}`, () => {
+  toast(`${t.name} −${num(t, last.value)}`, () => {
     state.entries.push(last);
     save();
     renderToday();
@@ -632,7 +651,7 @@ function historySheet(t) {
         el('strong', {}, `${DAY_NAMES[d.getDay()]}, ${MONTH_SHORT[d.getMonth()]} ${d.getDate()}`),
         d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : '',
         el('span', {}, d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))),
-      el('span', { class: 'hist-amount' }, `${fmt(e.value)} ${unitWord(t, e.value)}`),
+      el('span', { class: 'hist-amount' }, amountText(t, e.value)),
       el('span', { class: 'hist-chev', 'aria-hidden': 'true' }, '›')));
   }
   openSheet(
@@ -682,7 +701,7 @@ function entrySheet(t, entry, opts = {}) {
     save();
     refreshAll();
     const label = new Date(ts);
-    toast(`${entry ? 'Updated' : 'Added'} ${fmt(value)} on ${MONTH_SHORT[label.getMonth()]} ${label.getDate()}`);
+    toast(`${entry ? 'Updated' : 'Added'} ${num(t, value)} on ${MONTH_SHORT[label.getMonth()]} ${label.getDate()}`);
     switchSheet(back);
   };
 
@@ -725,12 +744,12 @@ function daySheet(t, day) {
     const d = new Date(e.ts);
     box.append(el('button', { type: 'button', class: 'hist-row', onclick: () => switchSheet(() => entrySheet(t, e, { back: again })) },
       el('span', { class: 'hist-when' }, el('strong', {}, d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))),
-      el('span', { class: 'hist-amount' }, `${fmt(e.value)} ${unitWord(t, e.value)}`),
+      el('span', { class: 'hist-amount' }, amountText(t, e.value)),
       el('span', { class: 'hist-chev', 'aria-hidden': 'true' }, '›')));
   }
   openSheet(
     el('h3', {}, `${t.name}: ${DAY_NAMES[day.getDay()]}, ${MONTH_SHORT[day.getMonth()]} ${day.getDate()}`),
-    el('p', {}, entries.length ? `${fmt(total)} ${unitWord(t, total)} total. Tap an entry to change it.` : 'Add anything you missed for this day.'),
+    el('p', {}, entries.length ? `${amountText(t, total)} total. Tap an entry to change it.` : 'Add anything you missed for this day.'),
     el('button', { class: 'sheet-btn primary', onclick: () => switchSheet(() => entrySheet(t, null, { date: day, back: again })) }, '+ Add entry for this day'),
     box,
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Done'),
@@ -887,6 +906,16 @@ function unitWord(t, n) {
   return n === 1 ? singular(label) : label;
 }
 
+const isMoney = t => t.unit === 'dollars';
+function money(n) { return '$' + (Number.isInteger(n) ? String(n) : n.toFixed(2)); }
+
+// An amount with its unit: "$12.50", "3 miles", "1 occurrence".
+function amountText(t, n) {
+  return isMoney(t) ? money(n) : `${fmt(n)} ${unitWord(t, n)}`;
+}
+// Just the number, as a dollar amount for money goals.
+function num(t, n) { return isMoney(t) ? money(n) : fmt(n); }
+
 function joinList(items) {
   if (items.length <= 1) return items.join('');
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
@@ -904,7 +933,7 @@ function goalDescription(f) {
   const name = (f.name || '').trim().toLowerCase();
   if (!name) return null;
   let text = `Your goal is to ${f.direction} ${name}`;
-  if (f.target > 0) text += ` to ${fmt(f.target)} ${unitWord(f, f.target)}${PER_PHRASE[f.reset]}`;
+  if (f.target > 0) text += ` to ${amountText(f, f.target)}${PER_PHRASE[f.reset]}`;
   const days = daysPhrase(f.days);
   if (days) text += (f.reset === 'day' || f.reset === 'hour' || f.reset === 'minute') ? ` on ${days}` : `, tracked on ${days}`;
   return text + '.';
@@ -944,10 +973,10 @@ $$('#create-form .seg').forEach(seg => seg.addEventListener('click', e => {
       form.unit = v;
       if (v === 'custom') setTimeout(() => $('#f-unit').focus(), 50);
       // Time-based goals are usually logged as an amount, not a fixed +1.
-      if ((v === 'minutes' || v === 'hours') && form.logMode === 'default' && form.defaultCount === 1) {
+      if (['minutes', 'hours', 'dollars'].includes(v) && form.logMode === 'default' && form.defaultCount === 1) {
         form.logMode = 'custom';
         autoCustom = true;
-      } else if (v !== 'minutes' && v !== 'hours' && autoCustom) {
+      } else if (!['minutes', 'hours', 'dollars'].includes(v) && autoCustom) {
         form.logMode = 'default';
         autoCustom = false;
       }
@@ -979,13 +1008,29 @@ $('#f-unit').addEventListener('input', e => {
   $('#bottom-unit-btn').textContent = unitLabel(form).toUpperCase() || 'MEASUREMENT';
 });
 
+function applySuggestion(s) {
+  const unit = s.unit || 'occurrences';
+  form.name = s.name;
+  form.direction = s.direction || 'increase';
+  form.unit = unit;
+  form.customUnit = s.customUnit || '';
+  // Amount-style units are entered manually; counts add the usual amount per tap.
+  const manual = ['minutes', 'hours', 'dollars'].includes(unit) || (unit === 'custom' && ['miles', 'pages', 'steps'].includes(form.customUnit));
+  form.logMode = manual ? 'custom' : 'default';
+  autoCustom = false;
+  $('#f-name').value = s.name;
+  $('#f-unit').value = form.customUnit;
+  $('#idea-chips').classList.add('hidden');
+  syncForm();
+}
+
 $('#btn-idea').addEventListener('click', () => {
   const box = $('#idea-chips');
   if (!box.childElementCount) {
     SUGGESTIONS.forEach(s => box.append(el('button', {
       type: 'button', class: 'chip',
-      onclick: () => { form.name = s; $('#f-name').value = s; box.classList.add('hidden'); validateForm(); renderGoalDesc(); },
-    }, s)));
+      onclick: () => applySuggestion(s),
+    }, s.name)));
   }
   box.classList.toggle('hidden');
 });
@@ -1152,7 +1197,7 @@ function renderStats() {
 
     const card = el('div', { class: `stat-card ${inkClass(t.color)}`, style: `background:${t.color}` },
       el('h3', {}, t.name),
-      el('div', { class: 'stat-sub' }, `${fmt(total)} ${unitWord(t, total).toUpperCase()} · ${fmt(avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
+      el('div', { class: 'stat-sub' }, `${amountText(t, total).toUpperCase()}${isMoney(t) ? ' TOTAL' : ''} · ${num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
 
     const pick = i => pickBucket(t, r, i);
     card.append(statsState.view === 'bars'
@@ -1219,7 +1264,7 @@ function lineChart(t, sums, labels, currentIdx, onPick) {
 
   const unit = unitLabel(t);
   for (const p of points) {
-    plot.append(el('button', { type: 'button', class: 'pt', style: `left:${p.x}%;top:${p.y}%`, 'aria-label': `${fmt(p.v)} ${unitWord(t, p.v)}`, onclick: () => onPick(p.i) }));
+    plot.append(el('button', { type: 'button', class: 'pt', style: `left:${p.x}%;top:${p.y}%`, 'aria-label': amountText(t, p.v), onclick: () => onPick(p.i) }));
   }
 
   const yAxis = el('div', { class: 'y-axis', style: 'height:170px;width:34px' },
@@ -1430,7 +1475,7 @@ async function checkReminders() {
     if (late < 0 || late > 15 * 60000) continue;
     fired[t.id] = todayK;
     save();
-    const body = `Time to check in. ${fmt(currentCount(t))} ${unitWord(t, currentCount(t))} so far ${(PERIOD_LABEL[t.reset] || '').toLowerCase()}.`;
+    const body = `Time to check in. ${amountText(t, currentCount(t))} so far ${(PERIOD_LABEL[t.reset] || '').toLowerCase()}.`;
     // Looking at the app: slide down an in-app banner. Otherwise: a system banner (needs permission).
     if (document.visibilityState === 'visible') {
       showBanner(t, body);
