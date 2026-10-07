@@ -429,7 +429,7 @@ function tallyCard(t, bump) {
       : `${t.name}: ${countText}. Tap to log, hold for options.`,
   },
   el('div', { class: 'card-top' },
-    el('div', { class: 'card-name' }, t.name),
+    el('div', { class: 'card-name' }, goalTitle(t)),
     el('div', { class: 'card-period' }, PERIOD_LABEL[t.reset] || 'TODAY', goalBadge(t, count))),
   el('div', { class: `card-count ${sizeClass}` }, countText),
   cardFoot(t, bottom),
@@ -555,6 +555,24 @@ function attachDrag(card, t) {
   card.addEventListener('pointercancel', cancel);
   card.addEventListener('lostpointercapture', () => { if (dragging) cancel(); });
   card.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+// Goal title followed by an up (increase) or down (decrease) arrow.
+function goalTitle(t) {
+  const down = t.direction === 'decrease';
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'dir-arrow');
+  svg.setAttribute('viewBox', '0 0 12 12');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', down ? 'M6 2v8M2.5 6.5 6 10l3.5-3.5' : 'M6 10V2M2.5 5.5 6 2l3.5 3.5');
+  svg.append(path);
+  return [
+    el('span', { class: 'name-text' }, t.name),
+    svg,
+    el('span', { class: 'sr-only' }, down ? ' (decrease)' : ' (increase)'),
+  ];
 }
 
 function goalBadge(t, count) {
@@ -1081,7 +1099,7 @@ function renderColorPreview() {
   const t = { ...form, name: (form.name || '').trim() || 'Your goal' };
   box.append(el('div', { class: `card preview-card ${cardColorClass(t)}`, style: cardColorStyle(t) },
     el('div', { class: 'card-top' },
-      el('div', { class: 'card-name' }, t.name),
+      el('div', { class: 'card-name' }, goalTitle(t)),
       el('div', { class: 'card-period' }, PERIOD_LABEL[t.reset] || 'TODAY')),
     el('div', { class: 'card-count' }, t.target ? `0/${num(t, t.target)}` : '0')));
 }
@@ -1323,7 +1341,7 @@ function renderStats() {
     const avg = active.size ? total / active.size : 0;
 
     const card = el('div', { class: `stat-card ${cardColorClass(t)}`, style: cardColorStyle(t, 'stat') },
-      el('h3', {}, t.name),
+      el('h3', {}, goalTitle(t)),
       el('div', { class: 'stat-sub' }, `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
 
     const pick = i => pickBucket(t, r, i);

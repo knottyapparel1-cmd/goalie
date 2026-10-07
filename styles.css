@@ -1189,3 +1189,21 @@ html[data-theme="dark"] .group-chip { color: #c3cad6; }
 html[data-theme="dark"] .duration-field span { color: #a7b0c0; }
 html[data-theme="dark"] .sheet-backdrop.show { background: rgba(0, 0, 0, .55); }
 html[data-theme="dark"] .help-hero p { color: rgba(255, 255, 255, .9); }
+
+/* ---------- Goal title + increase/decrease arrow ---------- */
+.card .card-name { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.tally-list.list .card .card-name { justify-content: flex-start; }
+.card-name .name-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.dir-arrow {
+  flex: none;
+  width: .78em;
+  height: .78em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.stat-card h3 { display: flex; align-items: center; gap: 6px; }
+.stat-card h3 .dir-arrow { width: .7em; height: .7em; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
