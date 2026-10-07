@@ -110,7 +110,7 @@
       </div>
 
       <label class="field-label" for="f-goal">GOAL</label>
-      <div class="goal-row">
+      <div class="goal-row" id="goal-amount-row">
         <input id="f-goal" class="text-input goal-input" type="number" inputmode="decimal" step="any" min="0" placeholder="#">
         <span id="goal-per" class="goal-per">PER DAY</span>
       </div>
@@ -119,6 +119,7 @@
         <button type="button" data-v="minutes">MINUTES</button>
         <button type="button" data-v="hours">HOURS</button>
         <button type="button" data-v="dollars" aria-label="Dollars">$</button>
+        <button type="button" data-v="check" aria-label="Check or X">✓/✗</button>
         <button type="button" data-v="custom">CUSTOM</button>
       </div>
       <div id="per-row" class="per-row">
@@ -138,13 +139,15 @@
       <div class="field-label">GROUP</div>
       <button type="button" class="link-row" id="btn-group"><span id="group-value">NONE</span><span class="chev">&rsaquo;</span></button>
 
+      <div id="amount-section">
       <label class="field-label" for="f-default">AMOUNT PER TAP</label>
       <input id="f-default" class="text-input full" type="number" inputmode="decimal" step="any" value="1">
 
       <div class="field-label">WHEN YOU TAP +</div>
-      <div class="seg pills" data-field="logMode">
+      <div class="seg pills" data-field="logMode" id="logmode-seg">
         <button type="button" data-v="default">ADD THE USUAL AMOUNT</button>
         <button type="button" data-v="custom">ALLOW ME TO ENTER IT MANUALLY</button>
+      </div>
       </div>
 
       <div class="field-label">REMINDERS</div>

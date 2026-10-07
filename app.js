@@ -197,11 +197,15 @@ function hasActivityToday(id) {
 }
 
 function logEntry(t, value) {
+  if (isCheck(t)) {
+    if (currentCount(t) >= 1) { toast(`${t.name} is already checked off`); return; }
+    value = 1;
+  }
   const entry = { id: uid(), tallyId: t.id, ts: Date.now(), value: Number(value) };
   state.entries.push(entry);
   save();
   renderToday(t.id);
-  toast(`${t.name} ${value >= 0 ? '+' : '−'}${num(t, Math.abs(value))}`, () => {
+  toast(isCheck(t) ? `${t.name} ✓` : `${t.name} ${value >= 0 ? '+' : '−'}${num(t, Math.abs(value))}`, () => {
     state.entries = state.entries.filter(e => e.id !== entry.id);
     save();
     renderToday();
@@ -413,7 +417,7 @@ function tallyCard(t, bump) {
 
   let bottom;
   if (t.bottomMode === 'custom') bottom = t.bottomText || '';
-  else if (t.bottomMode === 'unit') bottom = capitalize(unitLabel(t));
+  else if (t.bottomMode === 'unit') bottom = isCheck(t) ? (count >= 1 ? 'Done' : 'Not yet') : capitalize(unitLabel(t));
   else {
     const last = lastEntry(t.id);
     bottom = last ? relTime(last.ts) : 'Not yet';
@@ -431,7 +435,7 @@ function tallyCard(t, bump) {
   el('div', { class: 'card-top' },
     el('div', { class: 'card-name' }, goalTitle(t, goalReached(t, count))),
     el('div', { class: 'card-period' }, PERIOD_LABEL[t.reset] || 'TODAY', goalBadge(t, count))),
-  el('div', { class: `card-count ${sizeClass}` }, countText),
+  el('div', { class: `card-count ${sizeClass}` }, isCheck(t) ? checkMark(count >= 1) : countText),
   cardFoot(t, bottom),
   editMode ? deleteButton(t) : null);
 
@@ -579,11 +583,26 @@ function goalTitle(t, reached = false) {
 // Increase goals: reached once the count hits the target this period.
 // Decrease goals: on track (checkmark) while the count is at or under the limit.
 function goalReached(t, count) {
+  if (isCheck(t)) return t.direction === 'decrease' ? count === 0 : count >= 1;
   if (!(t.target > 0)) return false;
   return t.direction === 'decrease' ? count <= t.target : count >= t.target;
 }
 
 // Red ! when a decrease goal goes over its limit. (Met goals show a ✓ in the title instead.)
+// Big plain check / X for check-off goals (drawn as lines so it matches the app's style).
+function checkMark(done) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'check-mark');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', done ? 'Done' : 'Not done');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', done ? 'M4 12.5 9.5 18 20 6' : 'M6 6l12 12M18 6 6 18');
+  svg.append(path);
+  return svg;
+}
+
 function goalBadge(t, count) {
   if (!t.target || t.direction !== 'decrease') return null;
   return count > t.target ? el('span', { class: 'card-check over', title: 'Over your goal' }, '!') : null;
@@ -939,6 +958,8 @@ function syncForm() {
   renderGoalDesc();
   $('#f-bottom').classList.toggle('hidden', form.bottomMode !== 'custom');
   $('#f-unit').classList.toggle('hidden', form.unit !== 'custom');
+  $('#goal-amount-row').classList.toggle('hidden', isCheck(form));
+  $('#amount-section').classList.toggle('hidden', isCheck(form));
   setSeg('per', form.reset);
   $('#bottom-unit-btn').textContent = unitLabel(form).toUpperCase() || 'MEASUREMENT';
   $('#group-value').textContent = form.group ? form.group.toUpperCase() : 'NONE';
@@ -970,7 +991,10 @@ const DAY_PLURAL = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays',
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 // The unit as the user sees it: a built-in unit or their own custom word.
+const isCheck = t => t.unit === 'check';
+
 function unitLabel(t) {
+  if (t.unit === 'check') return 'check-ins';
   if (t.unit === 'custom') return (t.customUnit || '').trim();
   return t.unit || 'occurrences';
 }
@@ -1014,12 +1038,14 @@ function durationLong(t, n) {
 
 // An amount with its unit: "$12.50", "3 miles", "1 occurrence", "12m 30s".
 function amountText(t, n) {
+  if (isCheck(t)) return n >= 1 ? '✓ Done' : '✗ Not done';
   if (isMoney(t)) return money(n);
   if (isDuration(t)) return durationShort(t, n);
   return `${fmt(n)} ${unitWord(t, n)}`;
 }
 // Just the number: dollars for money goals, clock style (12:30) for time goals.
 function num(t, n) {
+  if (isCheck(t)) return n >= 1 ? '✓' : '✗';
   if (isMoney(t)) return money(n);
   if (isDuration(t)) { const [big, small] = splitDuration(n); return `${big}:${pad2(small)}`; }
   return fmt(n);
@@ -1067,6 +1093,13 @@ function daysPhrase(days) {
 function goalDescription(f) {
   const name = (f.name || '').trim().toLowerCase();
   if (!name) return null;
+  if (isCheck(f)) {
+    const every = { minute: 'every minute', hour: 'every hour', day: 'every day', week: 'every week', month: 'every month', year: 'every year', never: 'once' }[f.reset];
+    let t = `Your goal is to ${f.direction === 'decrease' ? 'avoid' : 'check off'} ${name} ${every}`;
+    const d = daysPhrase(f.days);
+    if (d) t += ` on ${d}`;
+    return t + '.';
+  }
   let text = `Your goal is to ${f.direction} ${name}`;
   if (f.target > 0) text += ` to ${isDuration(f) ? durationLong(f, f.target) : amountText(f, f.target)}${PER_PHRASE[f.reset]}`;
   const days = daysPhrase(f.days);
@@ -1116,12 +1149,18 @@ $$('#create-form .seg').forEach(seg => seg.addEventListener('click', e => {
   const v = b.dataset.v;
   switch (seg.dataset.field) {
     case 'per': form.reset = v; break;
-    case 'colorTarget': colorTarget = v; break; // the PER choice is also when the goal's count resets
+    case 'colorTarget': colorTarget = v; break;
     case 'logMode': form.logMode = v; autoCustom = false; break;
     case 'bottomMode': form.bottomMode = v; break;
     case 'direction': form.direction = v; break;
     case 'unit':
       form.unit = v;
+      if (v === 'check') {
+        // A check-off has no number: one tap marks it done for the period.
+        form.target = null; $('#f-goal').value = '';
+        form.defaultCount = 1; $('#f-default').value = '1';
+        form.logMode = 'default'; autoCustom = false;
+      }
       if (v === 'custom') setTimeout(() => $('#f-unit').focus(), 50);
       // Time-based goals are usually logged as an amount, not a fixed +1.
       if (['minutes', 'hours', 'dollars'].includes(v) && form.logMode === 'default' && form.defaultCount === 1) {
@@ -1348,18 +1387,21 @@ function renderStats() {
 
     const card = el('div', { class: `stat-card ${cardColorClass(t)}`, style: cardColorStyle(t, 'stat') },
       el('h3', {}, goalTitle(t)),
-      el('div', { class: 'stat-sub' }, `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
+      el('div', { class: 'stat-sub' }, isCheck(t)
+        ? `${fmt(total)} ✓ ${total === 1 ? 'CHECK-IN' : 'CHECK-INS'}`
+        : `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
 
     const pick = i => pickBucket(t, r, i);
     card.append(statsState.view === 'bars'
-      ? barChart(sums, bucketLabels(r), currentIdx, pick)
+      ? barChart(sums, bucketLabels(r), currentIdx, pick, isCheck(t) ? Math.max(1, ...sums) : 0)
       : lineChart(t, sums, bucketLabels(r), currentIdx, pick));
     list.append(card);
   }
 }
 
-function barChart(sums, labels, currentIdx, onPick) {
-  const max = niceMax(Math.max(0, ...sums));
+// scaleMax: fixed top of the scale (check-off goals use their own small scale).
+function barChart(sums, labels, currentIdx, onPick, scaleMax) {
+  const max = scaleMax || niceMax(Math.max(0, ...sums));
   const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' },
     el('span', { style: 'top:0' }, fmt(max)),
     el('span', { style: 'top:50%' }, fmt(max / 2)));
@@ -1384,7 +1426,7 @@ function lineChart(t, sums, labels, currentIdx, onPick) {
     (t.reset === 'hour' && range === 'day') ||
     (t.reset === 'day' && (range === 'week' || range === 'month')) ||
     (t.reset === 'month' && range === 'year'));
-  const max = niceMax(Math.max(0, ...sums, goalFits ? t.target : 0));
+  const max = isCheck(t) ? Math.max(1, ...sums) : niceMax(Math.max(0, ...sums, goalFits ? t.target : 0));
   const yOf = v => 100 - (v / max) * 100;
   const xOf = i => (span ? (i / span) * 100 : 50);
 
