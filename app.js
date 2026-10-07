@@ -434,7 +434,7 @@ function tallyCard(t, bump) {
       : `${t.name}: ${countText}. Tap to log, hold for options.`,
   },
   el('div', { class: 'card-top' },
-    el('div', { class: 'card-name' }, goalTitle(t, goalReached(t, count))),
+    el('div', { class: 'card-name' + nameSizeClass(t.name) }, goalTitle(t, goalReached(t, count))),
     el('div', { class: 'card-period' }, PERIOD_LABEL[t.reset] || 'TODAY', goalBadge(t, count))),
   el('div', { class: `card-count ${sizeClass}` }, isCheck(t) ? checkMark(count >= 1) : countText),
   cardFoot(t, bottom),
@@ -574,11 +574,21 @@ function goalTitle(t, reached = false) {
   const path = document.createElementNS(NS, 'path');
   path.setAttribute('d', reached ? 'M2 6.5 4.8 9.2 10 3' : down ? 'M6 2v8M2.5 6.5 6 10l3.5-3.5' : 'M6 10V2M2.5 5.5 6 2l3.5 3.5');
   svg.append(path);
+  // Keep the arrow glued to the last word so it never ends up alone on a line.
+  const words = String(t.name).trim().split(/\s+/);
+  const last = words.pop() || '';
   return [
-    el('span', { class: 'name-text' }, t.name),
-    svg,
+    el('span', { class: 'name-text' },
+      words.length ? words.join(' ') + ' ' : '',
+      el('span', { class: last.length > 11 ? 'name-last can-break' : 'name-last' }, last, svg)),
     el('span', { class: 'sr-only' }, reached ? ' (goal reached)' : down ? ' (decrease)' : ' (increase)'),
   ];
+}
+
+// Long titles get a smaller size so every word fits.
+function nameSizeClass(name) {
+  const n = String(name).length;
+  return n > 24 ? ' name-xlong' : n > 13 ? ' name-long' : '';
 }
 
 // Increase goals: reached once the count hits the target this period.
@@ -1154,7 +1164,7 @@ function renderColorPreview() {
   const t = { ...form, name: (form.name || '').trim() || 'Your goal' };
   box.append(el('div', { class: `card preview-card ${cardColorClass(t)}`, style: cardColorStyle(t) },
     el('div', { class: 'card-top' },
-      el('div', { class: 'card-name' }, goalTitle(t)),
+      el('div', { class: 'card-name' + nameSizeClass(t.name) }, goalTitle(t)),
       el('div', { class: 'card-period' }, PERIOD_LABEL[t.reset] || 'TODAY')),
     el('div', { class: 'card-count' }, t.target ? `0/${num(t, t.target)}` : '0')));
 }

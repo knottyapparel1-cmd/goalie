@@ -1290,3 +1290,28 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
 /* Stats footer lines up with the home footer: same icon center line, same filter-bar height */
 #screen-stats .stats-bar { padding-bottom: 26px; }
 #screen-stats .filter-bar { margin-bottom: 6px; }
+
+/* ---------- Goal titles: every word shows (wrap instead of "…"), smaller type for long titles ---------- */
+.card .card-name {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  line-height: 1.15;
+}
+.card-name .name-text { overflow: visible; text-overflow: clip; }
+.name-last { white-space: nowrap; }
+.name-last .dir-arrow { display: inline-block; vertical-align: -0.06em; margin-left: .22em; }
+.card .card-name.name-long  { font-size: clamp(14px, 9.6cqw, 18px); }
+.card .card-name.name-xlong { font-size: clamp(13px, 8.4cqw, 16px); }
+.tally-list.list .card .card-name { text-align: left; font-size: 19px; }
+.tally-list.list .card .card-name.name-long  { font-size: 17px; }
+.tally-list.list .card .card-name.name-xlong { font-size: 16px; }
+/* a title on 2–3 lines: give the count a little less room so the card stays close to square */
+.card:has(.card-name.name-xlong) .card-count { font-size: clamp(24px, 22cqw, 46px); }
+/* stats card titles wrap too */
+.stat-card h3 { display: block; line-height: 1.2; }
+.stat-card h3 .name-last .dir-arrow { width: .7em; height: .7em; }
+.name-last.can-break { white-space: normal; }   /* a very long single word may break so nothing is cut off */
