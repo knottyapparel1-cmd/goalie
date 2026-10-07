@@ -1127,3 +1127,6 @@ button {
 .swatch-white.on { box-shadow: 0 0 0 3px #fff inset, 0 0 0 2.5px var(--navy), inset 0 0 0 4px var(--line); }
 /* very light cards get an outline so they don't vanish on the white page */
 .card.is-pale, .stat-card.is-pale { box-shadow: inset 0 0 0 1.5px var(--line); }
+
+/* Space directly under the DAY / WEEK / MONTH / YEAR buttons (stays put while the graphs scroll) */
+#range-tabs { margin-bottom: 18px; }
