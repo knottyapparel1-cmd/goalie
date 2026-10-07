@@ -1154,4 +1154,4 @@ button {
 @media (max-width: 360px) { .filter-bar button { padding: 0 2px; } }
 
 /* Stats: a bit more room above the bar / line chart buttons */
-#screen-stats .stats-bar { padding-top: 12px; }
+#screen-stats .stats-bar { padding-top: 10px; }
