@@ -1249,3 +1249,19 @@ html.fit-screen .sheet,
 html.fit-screen .sheet-backdrop,
 html.fit-screen .toast { position: absolute; }
 .screen-info { font-size: 11px; opacity: .7; margin-top: 16px; }
+
+/* ---------- Footer: icons sit exactly 10px above the bottom of the screen ---------- */
+.bottom-bar,
+#screen-stats .stats-bar {
+  align-items: flex-end;
+  padding-bottom: 10px;
+}
+/* measure to the visible icon, not its invisible button box; keep a full-size tap area */
+.bottom-bar .icon-btn,
+#screen-stats .stats-bar .view-btn {
+  min-height: 0;
+  padding: 0;
+  position: relative;
+}
+.bottom-bar .icon-btn::after,
+#screen-stats .stats-bar .view-btn::after { content: ""; position: absolute; inset: -10px -14px; }

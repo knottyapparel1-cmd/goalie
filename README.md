@@ -24,7 +24,7 @@ Then open http://localhost:5173.
 Any static HTTPS host works too, such as Netlify Drop or Cloudflare Pages. A service worker (needed for offline use) only runs over HTTPS.
 
 ## Updating
-After you change files, bump `CACHE` in `sw.js` (for example to `goalie-v68`) so installed copies pick up the new version.
+After you change files, bump `CACHE` in `sw.js` (for example to `goalie-v69`) so installed copies pick up the new version.
 
 ## Limitations of a web app on iOS
 - Reminders only fire while the app is open or was recently used. True background push needs a server.

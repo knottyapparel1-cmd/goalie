@@ -1588,7 +1588,7 @@ function fitToScreen() {
   const underClock = (document.querySelector('.status-bg')?.offsetHeight || 0) > 0;
   const portrait = Math.abs(screen.width - window.innerWidth) < 4;
   const short = screen.height - window.innerHeight;
-  if (standalone && underClock && portrait && short > 0 && short < 120) {
+  if (standalone && underClock && portrait && short > 0 && short < 160) {
     root.style.setProperty('--app-h', screen.height + 'px');
     root.classList.add('fit-screen');
   } else {
