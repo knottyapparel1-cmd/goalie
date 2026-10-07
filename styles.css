@@ -1256,3 +1256,5 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
 }
 .bottom-bar .icon-btn::after,
 #screen-stats .stats-bar .view-btn::after { content: ""; position: absolute; inset: -10px -14px; }
+/* The + icon box is 4px taller than its neighbours; nudge it so all three footer icons share one center line */
+#btn-add svg { transform: translateY(2px); }

@@ -25,7 +25,7 @@ Any static HTTPS host works too, such as Netlify Drop or Cloudflare Pages. A ser
 
 ## Updating
 When you change any app file, bump the version in **three** places so installed copies update themselves:
-1. `CACHE` in `sw.js` (e.g. `goalie-v73`)
+1. `CACHE` in `sw.js` (e.g. `goalie-v74`)
 2. `<meta name="goalie-version">` in `index.html`
 3. `version` in `version.json` (must match the meta tag)
 
