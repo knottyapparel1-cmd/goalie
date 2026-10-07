@@ -1233,3 +1233,18 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
   z-index: 90;
   pointer-events: none;
 }
+
+/* Hidden reminder banner sits just above the screen: hide it completely (its shadow was showing
+   as a faint gray line under the iPhone clock area). */
+.banner { visibility: hidden; transition: transform .35s cubic-bezier(.2, .8, .2, 1), visibility 0s linear .35s; }
+.banner.show { visibility: visible; transition: transform .35s cubic-bezier(.2, .8, .2, 1), visibility 0s; }
+
+/* iPhone home-screen app drawing under the clock: iOS reports a page 1 status-bar shorter than the
+   screen and cuts off pinned (fixed) elements at that height. When that happens (see fitToScreen),
+   lay the screens out as a normal page sized to the real screen instead. */
+html.fit-screen { height: var(--app-h); }
+html.fit-screen body { position: relative; height: 100%; overflow: hidden; }
+html.fit-screen .screen,
+html.fit-screen .sheet,
+html.fit-screen .sheet-backdrop,
+html.fit-screen .toast { position: absolute; }

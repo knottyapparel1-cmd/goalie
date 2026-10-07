@@ -1574,6 +1574,26 @@ function applyTheme() {
 }
 applyTheme();
 
+// iPhone home-screen app drawing under the clock (black-translucent): iOS can report a page shorter
+// than the screen by the status-bar height, which left the footer floating too high. Only in that exact
+// case (status-bar area present, portrait, page shorter than the screen) size the app to the real screen.
+function fitToScreen() {
+  const root = document.documentElement;
+  const standalone = navigator.standalone === true || !!window.matchMedia?.('(display-mode: standalone)').matches;
+  const underClock = (document.querySelector('.status-bg')?.offsetHeight || 0) > 0;
+  const portrait = Math.abs(screen.width - window.innerWidth) < 4;
+  const short = screen.height - window.innerHeight;
+  if (standalone && underClock && portrait && short > 0 && short < 120) {
+    root.style.setProperty('--app-h', screen.height + 'px');
+    root.classList.add('fit-screen');
+  } else {
+    root.classList.remove('fit-screen');
+  }
+}
+fitToScreen();
+window.addEventListener('resize', fitToScreen);
+window.addEventListener('orientationchange', () => setTimeout(fitToScreen, 300));
+
 darkQuery?.addEventListener?.('change', applyTheme);
 
 $('#set-theme').addEventListener('click', e => {
