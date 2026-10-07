@@ -1223,7 +1223,7 @@ html[data-theme="dark"] .help-hero p { color: rgba(255, 255, 255, .9); }
 /* ---------- Status bar area ----------
    The app now draws under the iPhone clock/battery (black-translucent), which iOS always shows in white,
    so that strip gets a dark fill: Goalie navy in light mode, the page color in dark mode. */
-:root { --statusbar: #1c2a4a; }
+:root { --statusbar: var(--bg); }   /* light mode: same white as the page */
 html[data-theme="dark"] { --statusbar: var(--bg); }
 .status-bg {
   position: fixed;
@@ -1233,3 +1233,6 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
   z-index: 90;
   pointer-events: none;
 }
+
+/* Full-height screens on iPhone home-screen apps (see fitToScreen in app.js) */
+.screen { bottom: auto; height: var(--app-h, 100%); }
