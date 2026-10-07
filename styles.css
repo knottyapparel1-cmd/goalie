@@ -1107,3 +1107,23 @@ button {
 .today-header.editing .edit-toggle { min-width: 0; padding: 0 4px; }
 /* DONE + CANCEL need the room while editing; the title comes back after */
 .today-header.editing h1 { visibility: hidden; }
+
+/* ---------- Goal / text color picker ---------- */
+.color-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.color-target { flex: 1; flex-direction: column; gap: 8px; }
+.color-target button { width: 100%; height: 42px; }
+#color-preview { flex: none; width: 118px; }
+.preview-card { pointer-events: none; padding: 10px 8px; border-radius: 18px; }
+.preview-card .card-count { margin: 2px 0 0; }
+.text-auto {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-bottom: 12px; padding: 8px 14px; border-radius: 999px;
+  border: 1.5px solid var(--line); font-size: 12px; font-weight: 800; letter-spacing: .06em;
+}
+.text-auto span { font-weight: 600; color: var(--muted); letter-spacing: 0; }
+.text-auto.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.text-auto.on span { color: rgba(255, 255, 255, .7); }
+.swatch-white { box-shadow: inset 0 0 0 1.5px var(--line); }
+.swatch-white.on { box-shadow: 0 0 0 3px #fff inset, 0 0 0 2.5px var(--navy), inset 0 0 0 4px var(--line); }
+/* very light cards get an outline so they don't vanish on the white page */
+.card.is-pale, .stat-card.is-pale { box-shadow: inset 0 0 0 1.5px var(--line); }

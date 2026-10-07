@@ -142,7 +142,15 @@
       <button type="button" class="link-row" id="btn-reminder"><span id="reminder-value">NONE</span><span class="chev">&rsaquo;</span></button>
 
 
-      <div class="field-label">PICK YOUR GOAL’S COLOR</div>
+      <div class="field-label">PICK YOUR COLORS</div>
+      <div class="color-top">
+        <div class="seg pills color-target" data-field="colorTarget">
+          <button type="button" data-v="goal">GOAL COLOR</button>
+          <button type="button" data-v="text">TEXT COLOR</button>
+        </div>
+        <div id="color-preview" aria-hidden="true"></div>
+      </div>
+      <button type="button" id="text-auto" class="text-auto hidden">AUTO <span>(best contrast)</span></button>
       <div class="colors" id="color-grid"></div>
 
       <div class="field-label">WHAT SHOWS UNDER THE COUNT?</div>

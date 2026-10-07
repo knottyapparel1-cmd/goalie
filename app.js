@@ -12,6 +12,7 @@ const PALETTE = [
   { name: 'Sunset', shades: ['#ffe38a', '#ffc94d', '#ffa62b', '#f07f1a', '#c85a12'] },
   { name: 'Rose', shades: ['#ffb3c1', '#ff7a93', '#f2506e', '#d63150', '#9e1f3a'] },
   { name: 'Grape', shades: ['#d9c2f5', '#b794ec', '#9466db', '#7445bd', '#4e2c8a'] },
+  { name: 'Mono', shades: ['#ffffff', '#c9ccd1', '#8a9099', '#4b5563', '#111827'] },
 ];
 const COLORS = PALETTE.flatMap(p => p.shades);
 const DEFAULT_COLOR = '#4aa8e2';
@@ -22,6 +23,23 @@ function luminance(hex) {
   return 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
 }
 const NAVY_L = luminance('#1c2a4a');
+
+// Background + text color for a goal card or stat card. Custom text color overrides the automatic one.
+function cardColorClass(t) {
+  const pale = /^#?[0-9a-f]{6}$/i.test(t.color || '') && luminance(t.color) > 0.85;
+  return `${inkClass(t.color)}${pale ? ' is-pale' : ''}`;
+}
+function cardColorStyle(t, kind = 'card') {
+  let s = `background:${t.color}`;
+  const tc = t.textColor;
+  if (tc) {
+    const soft = `color-mix(in srgb, ${tc} 72%, transparent)`;
+    s += kind === 'card'
+      ? `;--card-ink:${tc};--card-name:${tc};--card-soft:${soft}`
+      : `;--stat-ink:${tc};--stat-soft:${soft}`;
+  }
+  return s;
+}
 
 // Card text is navy or white, whichever has more contrast against the card's color.
 function inkClass(hex) {
@@ -402,8 +420,8 @@ function tallyCard(t, bump) {
   }
 
   const card = el('div', {
-    class: `card ${inkClass(t.color)}${tracksToday ? '' : ' off-day'}${bump ? ' bump' : ''}`,
-    style: `background:${t.color}`,
+    class: `card ${cardColorClass(t)}${tracksToday ? '' : ' off-day'}${bump ? ' bump' : ''}`,
+    style: cardColorStyle(t),
     role: 'button',
     'data-id': t.id,
     'aria-label': editMode
@@ -856,13 +874,14 @@ function blankForm() {
   return {
     name: '', examples: '', nonExamples: '', direction: 'increase', unit: 'occurrences', customUnit: '', reset: 'day', days: [0, 1, 2, 3, 4, 5, 6], group: '', defaultCount: 1,
     logMode: 'default', target: null, reminder: null,
-    color: DEFAULT_COLOR, bottomMode: 'unit', bottomText: '',
+    color: DEFAULT_COLOR, textColor: '', bottomMode: 'unit', bottomText: '',
   };
 }
 
 function openForm(t) {
   editingId = t ? t.id : null;
   autoCustom = false;
+  colorTarget = 'goal';
   form = t ? { ...blankForm(), ...JSON.parse(JSON.stringify(t)) } : blankForm();
   // Days / weeks / months / years are no longer unit choices; keep the same word as a custom unit.
   if (['days', 'weeks', 'months', 'years'].includes(form.unit)) {
@@ -900,7 +919,12 @@ function syncForm() {
   $('#bottom-unit-btn').textContent = unitLabel(form).toUpperCase() || 'MEASUREMENT';
   $('#group-value').textContent = form.group ? form.group.toUpperCase() : 'NONE';
   $('#reminder-value').textContent = form.reminder ? `DAILY AT ${fmtTime(form.reminder)}` : 'NONE';
-  $$('#color-grid .swatch').forEach(s => s.classList.toggle('on', s.dataset.c === form.color));
+  setSeg('colorTarget', colorTarget);
+  const picked = colorTarget === 'goal' ? form.color : form.textColor;
+  $$('#color-grid .swatch').forEach(s => s.classList.toggle('on', s.dataset.c === picked));
+  $('#text-auto').classList.toggle('hidden', colorTarget !== 'text');
+  $('#text-auto').classList.toggle('on', !form.textColor);
+  renderColorPreview();
   validateForm();
 }
 
@@ -1040,19 +1064,35 @@ function fmtTime(hhmm) {
 }
 
 // Color swatches
+// One grid sets either the goal (card) color or the text color, chosen by the toggle above it.
+let colorTarget = 'goal';
 PALETTE.forEach(({ name, shades }) => shades.forEach((c, i) => {
   $('#color-grid').append(el('button', {
-    type: 'button', class: 'swatch', style: `background:${c}`, 'data-c': c, 'aria-label': `${name} ${i + 1}`, title: `${name} ${i + 1}`,
-    onclick: () => { form.color = c; syncForm(); },
+    type: 'button', class: `swatch${c === '#ffffff' ? ' swatch-white' : ''}`, style: `background:${c}`, 'data-c': c, 'aria-label': `${name} ${i + 1}`, title: `${name} ${i + 1}`,
+    onclick: () => { if (colorTarget === 'goal') form.color = c; else form.textColor = c; syncForm(); },
   }));
 }));
+$('#text-auto').addEventListener('click', () => { form.textColor = ''; syncForm(); });
+
+// Mini card showing the current goal + text colors.
+function renderColorPreview() {
+  const box = $('#color-preview');
+  box.innerHTML = '';
+  const t = { ...form, name: (form.name || '').trim() || 'Your goal' };
+  box.append(el('div', { class: `card preview-card ${cardColorClass(t)}`, style: cardColorStyle(t) },
+    el('div', { class: 'card-top' },
+      el('div', { class: 'card-name' }, t.name),
+      el('div', { class: 'card-period' }, PERIOD_LABEL[t.reset] || 'TODAY')),
+    el('div', { class: 'card-count' }, t.target ? `0/${num(t, t.target)}` : '0')));
+}
 
 // Segmented controls
 $$('#create-form .seg').forEach(seg => seg.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   const v = b.dataset.v;
   switch (seg.dataset.field) {
-    case 'per': form.reset = v; break; // the PER choice is also when the goal's count resets
+    case 'per': form.reset = v; break;
+    case 'colorTarget': colorTarget = v; break; // the PER choice is also when the goal's count resets
     case 'logMode': form.logMode = v; autoCustom = false; break;
     case 'bottomMode': form.bottomMode = v; break;
     case 'direction': form.direction = v; break;
@@ -1282,7 +1322,7 @@ function renderStats() {
     }
     const avg = active.size ? total / active.size : 0;
 
-    const card = el('div', { class: `stat-card ${inkClass(t.color)}`, style: `background:${t.color}` },
+    const card = el('div', { class: `stat-card ${cardColorClass(t)}`, style: cardColorStyle(t, 'stat') },
       el('h3', {}, t.name),
       el('div', { class: 'stat-sub' }, `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
 
