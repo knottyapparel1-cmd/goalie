@@ -1142,7 +1142,7 @@ button {
 .bottom-bar,
 #screen-stats .stats-bar {
   padding-top: 2px;
-  padding-bottom: max(12px, calc(var(--safe-bottom) - 10px));
+  padding-bottom: max(0px, calc(var(--safe-bottom) - 35px));  /* sits low, just above the home bar */
 }
 .filter-bar { margin-bottom: 2px; }
 
