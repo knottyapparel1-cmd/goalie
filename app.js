@@ -1655,5 +1655,27 @@ document.addEventListener('visibilitychange', () => {
 });
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  const hadController = !!navigator.serviceWorker.controller;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // iPhone keeps home-screen apps frozen in the background; check for a new version
+      // every time Goalie comes back to the front.
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+    }).catch(() => {});
+  });
+
+  // A new version took over: reload once you're not in the middle of something.
+  let reloadPending = false;
+  const busy = () => !!document.querySelector('.screen.modal.active, .sheet.show') || dragActive;
+  const reloadWhenIdle = () => {
+    if (busy()) { setTimeout(reloadWhenIdle, 2000); return; }
+    location.reload();
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloadPending) return; // first install: nothing old to replace
+    reloadPending = true;
+    reloadWhenIdle();
+  });
 }
