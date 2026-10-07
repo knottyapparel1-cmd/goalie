@@ -1080,7 +1080,7 @@ button {
 #screen-stats .range-row { padding-top: 8px; padding-bottom: 4px; }
 #screen-stats .range-row h2 { font-size: 20px; }
 #screen-stats .seg.tabs button { height: 34px; font-size: 13px; }
-.stats-list { padding-top: 24px; gap: 12px; }  /* breathing room under DAY/WEEK/MONTH/YEAR */
+.stats-list { padding-top: 12px; gap: 12px; }
 .stats-hint { font-size: 12px; }
 .stat-card { padding: 14px 14px 12px 10px; border-radius: 20px; }
 .stat-card h3 { margin-left: 8px; font-size: 20px; }
