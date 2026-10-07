@@ -1655,6 +1655,18 @@ $('#import-file').addEventListener('change', async e => {
   }
 });
 
+// Clears Goalie's saved app files (not your data) and reloads the newest version from the server.
+$('#btn-force-update').addEventListener('click', async () => {
+  toast('Updating…');
+  try {
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
+    await Promise.all(regs.map(r => r.unregister()));
+    const keys = (await window.caches?.keys?.()) || [];
+    await Promise.all(keys.map(k => caches.delete(k)));
+  } catch (e) { /* reload anyway */ }
+  location.replace(location.pathname + '?fresh=' + Date.now());
+});
+
 $('#btn-notify').addEventListener('click', async () => { await ensureNotifyPermission(); renderSettings(); });
 
 $('#btn-wipe').addEventListener('click', () => {

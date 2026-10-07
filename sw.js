@@ -1,5 +1,5 @@
 // Bump this when you change any app file so phones pick up the new version.
-const CACHE = 'goalie-v68';
+const CACHE = 'goalie-v69';
 const ASSETS = [
   './',
   './index.html',
@@ -13,7 +13,10 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's HTTP cache, so a new version never stores stale files.
+  event.waitUntil(caches.open(CACHE)
+    .then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', event => {
@@ -24,7 +27,8 @@ self.addEventListener('activate', event => {
   );
 });
 
-// App files: network first (so updates show up), falling back to cache offline.
+// App files: always ask the server for the latest version (cache: 'no-cache' revalidates instead of
+// reusing GitHub's 10-minute HTTP cache), falling back to the saved copy only when offline.
 // Fonts: cache first.
 self.addEventListener('fetch', event => {
   const req = event.request;
@@ -46,7 +50,7 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(req, copy));
