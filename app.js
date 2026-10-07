@@ -242,6 +242,9 @@ function renderToday(bumpId) {
   const list = $('#tally-list');
   if (editMode && !state.tallies.length) editMode = false;
   list.classList.toggle('list', state.settings.layout === 'list');
+  const layoutBtn = $('#btn-layout');
+  layoutBtn.classList.toggle('is-list', state.settings.layout === 'list');
+  layoutBtn.setAttribute('aria-label', state.settings.layout === 'list' ? 'Switch to square cards' : 'Switch to list view');
   list.classList.toggle('editing', editMode);
   $('#btn-edit').classList.toggle('on', editMode);
   list.innerHTML = '';
@@ -791,8 +794,7 @@ $('#btn-help').addEventListener('click', () => {
   openSheet(
     el('div', { class: 'help-hero' },
       el('div', { class: 'help-word' }, 'GOALIE'),
-      el('div', { class: 'help-tag' }, 'Not a cheerleader. A mirror.'),
-      el('p', {}, 'Goalie isn’t here to motivate you. It’s here to show you, honestly, the person you’re becoming, one check-in at a time.')),
+      el('p', {}, 'This app was not designed to be a motivator, but rather to reflect the person you are becoming')),
     el('h3', {}, 'How it works'),
     el('ol', {},
       el('li', {}, 'Tap + at the bottom to set a goal: anything you want to do more of or cut back on.'),

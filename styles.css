@@ -1064,3 +1064,8 @@ button {
 .help-word { font-size: 30px; font-weight: 800; letter-spacing: .06em; }
 .help-tag { margin-top: 6px; font-size: 17px; font-weight: 700; color: #8cd0ff; }
 .sheet .help-hero p { margin: 10px 0 0; color: rgba(255, 255, 255, .85); font-size: 15px; line-height: 1.5; }
+
+/* ---------- Layout toggle: shows the layout you'll switch to ---------- */
+.layout-toggle .icon-to-grid { display: none; }
+.layout-toggle.is-list .icon-to-grid { display: block; }
+.layout-toggle.is-list .icon-to-list { display: none; }

@@ -31,8 +31,11 @@
       <div class="header-actions">
         <button class="icon-btn muted" id="btn-help" aria-label="Help">?</button>
         <span class="divider"></span>
-        <button class="icon-btn" id="btn-layout" aria-label="Toggle layout">
-          <svg viewBox="0 0 24 24" width="26" height="26"><circle cx="7" cy="7" r="3.2" fill="#6b7280"/><circle cx="17" cy="7" r="3.2" fill="#c4c8cf"/><circle cx="7" cy="17" r="3.2" fill="#c4c8cf"/><circle cx="17" cy="17" r="3.2" fill="#6b7280"/></svg>
+        <button class="icon-btn layout-toggle" id="btn-layout" aria-label="Switch to list view">
+          <!-- shown in square view: tap for flat rows -->
+          <svg class="icon-to-list" viewBox="0 0 24 24" width="26" height="26" fill="#6b7280"><rect x="3" y="4" width="18" height="4.2" rx="1.6"/><rect x="3" y="9.9" width="18" height="4.2" rx="1.6"/><rect x="3" y="15.8" width="18" height="4.2" rx="1.6"/></svg>
+          <!-- shown in list view: tap for squares -->
+          <svg class="icon-to-grid" viewBox="0 0 24 24" width="26" height="26" fill="#6b7280"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>
         </button>
       </div>
     </header>
