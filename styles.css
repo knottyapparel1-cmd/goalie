@@ -1129,7 +1129,7 @@ button {
 .card.is-pale, .stat-card.is-pale { box-shadow: inset 0 0 0 1.5px var(--line); }
 
 /* Space directly under the DAY / WEEK / MONTH / YEAR buttons (stays put while the graphs scroll) */
-#range-tabs { margin-bottom: 18px; }
+#range-tabs { margin-bottom: 10px; }
 
 /* ---------- Edge-to-edge header & footer ----------
    Header icons sit right under the status bar; footer icons sit low, just clear of
@@ -1152,3 +1152,6 @@ button {
 /* Equal space between the filter words: each button is its word's width plus an equal share of the extra room */
 .filter-bar button { flex: 1 1 auto; padding: 0 4px; }
 @media (max-width: 360px) { .filter-bar button { padding: 0 2px; } }
+
+/* Stats: a bit more room above the bar / line chart buttons */
+#screen-stats .stats-bar { padding-top: 12px; }
