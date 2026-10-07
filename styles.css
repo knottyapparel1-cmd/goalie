@@ -1248,3 +1248,4 @@ html.fit-screen .screen,
 html.fit-screen .sheet,
 html.fit-screen .sheet-backdrop,
 html.fit-screen .toast { position: absolute; }
+.screen-info { font-size: 11px; opacity: .7; margin-top: 16px; }

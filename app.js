@@ -1542,6 +1542,11 @@ function renderTrash() {
 }
 
 function renderSettings() {
+  // Small readout to help tune the layout on a specific phone.
+  const sb = document.querySelector('.status-bg')?.offsetHeight || 0;
+  const fit = document.documentElement.classList.contains('fit-screen') ? 'on' : 'off';
+  const ver = document.querySelector('meta[name="goalie-version"]')?.content || '';
+  $('#screen-info').textContent = `Screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · top ${sb} · fit ${fit} · v${ver}`;
   $$('#set-theme button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.settings.theme || 'light')));
   if (document.activeElement !== $('#set-name')) $('#set-name').value = state.settings.name || '';
   renderTrash();
