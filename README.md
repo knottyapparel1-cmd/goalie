@@ -24,7 +24,12 @@ Then open http://localhost:5173.
 Any static HTTPS host works too, such as Netlify Drop or Cloudflare Pages. A service worker (needed for offline use) only runs over HTTPS.
 
 ## Updating
-After you change files, bump `CACHE` in `sw.js` (for example to `goalie-v70`) so installed copies pick up the new version.
+When you change any app file, bump the version in **three** places so installed copies update themselves:
+1. `CACHE` in `sw.js` (e.g. `goalie-v71`)
+2. `<meta name="goalie-version">` in `index.html`
+3. `version` in `version.json` (must match the meta tag)
+
+On open, the app compares its version to `version.json` (fetched with no caching); if it is behind, it clears its saved app files (never your data) and reloads once. Settings → **Update Goalie now** does the same on demand.
 
 ## Limitations of a web app on iOS
 - Reminders only fire while the app is open or was recently used. True background push needs a server.

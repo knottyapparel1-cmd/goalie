@@ -1250,11 +1250,11 @@ html.fit-screen .sheet-backdrop,
 html.fit-screen .toast { position: absolute; }
 .screen-info { font-size: 11px; opacity: .7; margin-top: 16px; }
 
-/* ---------- Footer: icons sit exactly 10px above the bottom of the screen ---------- */
+/* ---------- Footer: icons sit exactly 20px above the bottom of the screen ---------- */
 .bottom-bar,
 #screen-stats .stats-bar {
   align-items: flex-end;
-  padding-bottom: 10px;
+  padding-bottom: 20px;
 }
 /* measure to the visible icon, not its invisible button box; keep a full-size tap area */
 .bottom-bar .icon-btn,

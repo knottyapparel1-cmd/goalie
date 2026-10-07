@@ -1579,6 +1579,28 @@ function applyTheme() {
 }
 applyTheme();
 
+// Self-healing updates: ask the server which version is current, skipping every cache. If this copy
+// is older, clear Goalie's saved app files (never your data) and reload once.
+async function checkForNewVersion() {
+  try {
+    const mine = document.querySelector('meta[name="goalie-version"]')?.content;
+    const res = await fetch('version.json?ts=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const { version } = await res.json();
+    if (!version || version === mine) return;
+    const tried = sessionStorage.getItem('goalie-update-tried');
+    if (tried === version) return; // already tried once this session; don't loop
+    sessionStorage.setItem('goalie-update-tried', version);
+    const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
+    await Promise.all(regs.map(r => r.unregister()));
+    const keys = (await window.caches?.keys?.()) || [];
+    await Promise.all(keys.map(k => caches.delete(k)));
+    location.replace(location.pathname + '?v=' + version + '&t=' + Date.now());
+  } catch (e) { /* offline or blocked: try again next time */ }
+}
+checkForNewVersion();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForNewVersion(); });
+
 // iPhone home-screen app drawing under the clock (black-translucent): iOS can report a page shorter
 // than the screen by the status-bar height, which left the footer floating too high. Only in that exact
 // case (status-bar area present, portrait, page shorter than the screen) size the app to the real screen.
