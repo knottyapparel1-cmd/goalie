@@ -57,6 +57,8 @@ const SUGGESTIONS = [
   { name: 'Reading', unit: 'custom', customUnit: 'pages' },
   { name: 'Healthy eating', unit: 'custom', customUnit: 'healthy meals' },
   { name: 'Saving money', unit: 'dollars' },
+  { name: 'Smoking', direction: 'decrease' },
+  { name: 'Phone use', unit: 'minutes', direction: 'decrease' },
   { name: 'Workout', unit: 'minutes' },
   { name: 'Meditate', unit: 'minutes' },
   { name: 'Journal' },
@@ -68,9 +70,7 @@ const SUGGESTIONS = [
   { name: 'Stretch', unit: 'minutes' },
   { name: 'Volunteer', unit: 'hours' },
   { name: 'Practice a skill', unit: 'minutes' },
-  { name: 'Smoking', direction: 'decrease' },
   { name: 'Vaping', direction: 'decrease' },
-  { name: 'Phone use', unit: 'minutes', direction: 'decrease' },
   { name: 'Junk food', direction: 'decrease' },
 ];
 
