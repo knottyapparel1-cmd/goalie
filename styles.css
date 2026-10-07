@@ -1130,3 +1130,14 @@ button {
 
 /* Space directly under the DAY / WEEK / MONTH / YEAR buttons (stays put while the graphs scroll) */
 #range-tabs { margin-bottom: 18px; }
+
+/* ---------- Edge-to-edge header & footer ----------
+   Header icons sit right under the status bar; footer icons sit low, just clear of
+   the iPhone home bar (the home bar's safe area is ~34px; we use most of it). */
+.today-header { margin-top: 0; height: 54px; }
+.bottom-bar,
+#screen-stats .stats-bar {
+  padding-top: 2px;
+  padding-bottom: max(4px, calc(var(--safe-bottom) - 20px));
+}
+.filter-bar { margin-bottom: 2px; }
