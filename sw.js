@@ -1,5 +1,5 @@
 // Bump this when you change any app file so phones pick up the new version.
-const CACHE = 'goalie-v73';
+const CACHE = 'goalie-v74';
 const ASSETS = [
   './',
   './index.html',
