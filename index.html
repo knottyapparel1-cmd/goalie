@@ -17,6 +17,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
+  <script>
+    // Apply the saved theme before the page draws, so dark mode doesn't flash white.
+    try {
+      var t = (JSON.parse(localStorage.getItem('goalie.v1') || '{}').settings || {}).theme || 'light';
+      var dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    } catch (e) {}
+  </script>
 </head>
 <body>
 
@@ -214,6 +222,14 @@
     <div class="form-scroll">
       <label class="field-label first" for="set-name">NAME</label>
       <input id="set-name" class="text-input full" type="text" maxlength="30" autocomplete="given-name" autocapitalize="words" placeholder="Your first name">
+
+      <div class="field-label">APPEARANCE</div>
+      <div class="seg pills" id="set-theme">
+        <button type="button" data-v="light">LIGHT</button>
+        <button type="button" data-v="dark">DARK</button>
+        <button type="button" data-v="auto">AUTO</button>
+      </div>
+      <p class="note">Auto follows your iPhone’s light / dark setting.</p>
 
       <div class="field-label">WEEK STARTS ON</div>
       <div class="seg pills" id="set-weekstart">

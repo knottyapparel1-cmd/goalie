@@ -5,6 +5,10 @@
   --line: #e3e4e6;
   --accent: #4aa8e2;
   --bg: #ffffff;
+  --brand: #1c2a4a;      /* Goalie navy: always used for text on colored goal cards */
+  --surface: #ffffff;    /* raised panels: sheets, banners, selected pills */
+  --fill: #1c2a4a;       /* filled buttons */
+  --toast: #1c2a4a;
   --gutter: 22px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -153,7 +157,7 @@ button {
   display: flex;
   flex-direction: column;
   text-align: center;
-  color: var(--navy);
+  color: var(--brand);
   transition: transform .12s ease, opacity .2s;
   touch-action: manipulation;
 }
@@ -190,7 +194,7 @@ button {
   height: 16px;
   border-radius: 50%;
   background: #fff;
-  color: var(--navy);
+  color: var(--brand);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0;
@@ -235,7 +239,7 @@ button {
   height: 30px;
   border-radius: 50%;
   background: rgba(255,255,255,.35);
-  color: var(--navy);
+  color: var(--brand);
   font-size: 22px;
   font-weight: 600;
   line-height: 1;
@@ -450,7 +454,7 @@ button {
   transition: transform .12s;
 }
 .swatch:active { transform: scale(.92); }
-.swatch.on { box-shadow: 0 0 0 3px #fff inset, 0 0 0 2.5px var(--navy); }
+.swatch.on { box-shadow: 0 0 0 3px var(--bg) inset, 0 0 0 2.5px var(--navy); }
 
 .danger-link {
   margin-top: 40px;
@@ -464,13 +468,13 @@ button {
   position: absolute;
   left: 0; right: 0; bottom: 0;
   padding: 16px var(--gutter) calc(16px + var(--safe-bottom));
-  background: linear-gradient(to bottom, rgba(255,255,255,0), #fff 30%);
+  background: linear-gradient(to bottom, transparent, var(--bg) 30%);
 }
 .submit-btn {
   width: 100%;
   height: 58px;
   border-radius: 12px;
-  background: var(--navy);
+  background: var(--fill);
   color: #fff;
   font-size: 20px;
   font-weight: 700;
@@ -618,7 +622,7 @@ button {
   position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 41;
-  background: #fff;
+  background: var(--surface);
   border-radius: 22px 22px 0 0;
   padding: 10px var(--gutter) calc(20px + var(--safe-bottom));
   transform: translateY(105%);
@@ -648,7 +652,7 @@ button {
   font-weight: 600;
   text-align: center;
 }
-.sheet .sheet-btn.primary { background: var(--navy); color: #fff; }
+.sheet .sheet-btn.primary { background: var(--fill); color: #fff; }
 .sheet .sheet-btn.danger { color: #e5484d; }
 .sheet .sheet-btn.selected { box-shadow: inset 0 0 0 2px var(--navy); }
 .sheet .text-input { margin-top: 10px; }
@@ -683,7 +687,7 @@ button {
   transform: translate(-50%, 20px);
   opacity: 0;
   pointer-events: none;
-  background: var(--navy);
+  background: var(--toast);
   color: #fff;
   border-radius: 999px;
   padding: 12px 10px 12px 20px;
@@ -823,7 +827,7 @@ button {
 .trash-btn.restore {
   padding: 8px 12px;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   color: var(--accent);
   font-size: 14px;
 }
@@ -874,7 +878,7 @@ button {
   transition: background .15s, color .15s, box-shadow .15s;
 }
 .filter-bar button.on {
-  background: #fff;
+  background: var(--surface);
   color: var(--navy);
   box-shadow: 0 1px 3px rgba(20, 30, 60, .12);
 }
@@ -884,13 +888,13 @@ button {
 
 /* ---------- Card & stats ink (text color adapts to light / dark shades) ---------- */
 .card {
-  --card-ink: var(--navy);
+  --card-ink: var(--brand);
   --card-name: #fff;
   --card-soft: rgba(28, 42, 74, .72);
   --step-bg: rgba(255, 255, 255, .35);
   color: var(--card-ink);
 }
-.card.on-light { --card-name: var(--navy); --step-bg: rgba(255, 255, 255, .6); }
+.card.on-light { --card-name: var(--brand); --step-bg: rgba(255, 255, 255, .6); }
 .card.on-dark {
   --card-ink: #fff;
   --card-soft: rgba(255, 255, 255, .75);
@@ -907,7 +911,7 @@ button {
   color: var(--stat-ink);
 }
 .stat-card.on-light {
-  --stat-ink: var(--navy);
+  --stat-ink: var(--brand);
   --stat-soft: rgba(28, 42, 74, .55);
   --stat-track: rgba(28, 42, 74, .12);
 }
@@ -947,7 +951,7 @@ button {
   padding: 12px 10px 12px 16px;
   border-radius: 18px;
   border-left: 6px solid var(--banner-accent, var(--accent));
-  background: rgba(255, 255, 255, .97);
+  background: var(--surface);
   box-shadow: 0 12px 34px rgba(20, 30, 60, .22);
   transform: translateY(calc(-100% - 40px));
   transition: transform .35s cubic-bezier(.2, .8, .2, 1);
@@ -962,7 +966,7 @@ button {
   flex: none;
   padding: 9px 12px;
   border-radius: 10px;
-  background: var(--navy);
+  background: var(--fill);
   color: #fff;
   font-size: 14px;
   font-weight: 700;
@@ -1000,7 +1004,7 @@ button {
   white-space: nowrap;
 }
 .group-chip .chip-count { font-size: 12px; color: var(--muted); }
-.group-chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.group-chip.on { background: var(--fill); border-color: var(--fill); color: #fff; }
 .group-chip.on .chip-count { color: rgba(255, 255, 255, .7); }
 .group-chips:not(.hidden) + .tally-list { padding-top: 14px; }
 
@@ -1057,7 +1061,7 @@ button {
   margin: 4px 0 18px;
   padding: 22px 20px 18px;
   border-radius: 18px;
-  background: var(--navy);
+  background: var(--fill);
   color: #fff;
   text-align: center;
 }
@@ -1121,10 +1125,10 @@ button {
   border: 1.5px solid var(--line); font-size: 12px; font-weight: 800; letter-spacing: .06em;
 }
 .text-auto span { font-weight: 600; color: var(--muted); letter-spacing: 0; }
-.text-auto.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.text-auto.on { background: var(--fill); border-color: var(--fill); color: #fff; }
 .text-auto.on span { color: rgba(255, 255, 255, .7); }
 .swatch-white { box-shadow: inset 0 0 0 1.5px var(--line); }
-.swatch-white.on { box-shadow: 0 0 0 3px #fff inset, 0 0 0 2.5px var(--navy), inset 0 0 0 4px var(--line); }
+.swatch-white.on { box-shadow: 0 0 0 3px var(--bg) inset, 0 0 0 2.5px var(--navy), inset 0 0 0 4px var(--line); }
 /* very light cards get an outline so they don't vanish on the white page */
 .card.is-pale, .stat-card.is-pale { box-shadow: inset 0 0 0 1.5px var(--line); }
 
@@ -1155,3 +1159,33 @@ button {
 
 /* Stats: a bit more room above the bar / line chart buttons */
 #screen-stats .stats-bar { padding-top: 10px; }
+
+/* ================= Dark mode ================= */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1520;
+  --navy: #e6ebf3;       /* page text */
+  --soft: #1f2838;
+  --line: #2c3648;
+  --muted: #8b95a7;
+  --surface: #1a2232;
+  --fill: #2b7fc4;
+  --toast: #2a3550;
+}
+html[data-theme="dark"] .goal-desc { background: #15253a; }
+html[data-theme="dark"] .goal-desc.empty-desc { background: #182030; }
+html[data-theme="dark"] .hist-row:active { background: var(--soft); }
+html[data-theme="dark"] .sheet p,
+html[data-theme="dark"] .sheet ol,
+html[data-theme="dark"] .banner-text span { color: #a7b0c0; }
+html[data-theme="dark"] .text-input::placeholder,
+html[data-theme="dark"] .text-area::placeholder { color: #6c768a; }
+html[data-theme="dark"] .close-btn { background: #2c3648; }
+html[data-theme="dark"] .submit-btn:disabled { background: #2c3648; color: #6c768a; }
+html[data-theme="dark"] .group-count,
+html[data-theme="dark"] .filter-bar button { color: #a7b0c0; }
+html[data-theme="dark"] .filter-bar button.on { color: var(--navy); box-shadow: none; }
+html[data-theme="dark"] .group-chip { color: #c3cad6; }
+html[data-theme="dark"] .duration-field span { color: #a7b0c0; }
+html[data-theme="dark"] .sheet-backdrop.show { background: rgba(0, 0, 0, .55); }
+html[data-theme="dark"] .help-hero p { color: rgba(255, 255, 255, .9); }

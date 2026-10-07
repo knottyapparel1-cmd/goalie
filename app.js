@@ -1476,6 +1476,7 @@ function renderTrash() {
 }
 
 function renderSettings() {
+  $$('#set-theme button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.settings.theme || 'light')));
   if (document.activeElement !== $('#set-name')) $('#set-name').value = state.settings.name || '';
   renderTrash();
   $$('#set-weekstart button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.settings.weekStart));
@@ -1496,6 +1497,23 @@ $('#set-name').addEventListener('input', e => {
   save();
 });
 $('#set-name').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+
+// Appearance: light, dark, or follow the phone (auto).
+const darkQuery = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
+function applyTheme() {
+  const pref = state.settings.theme || 'light';
+  const dark = pref === 'dark' || (pref === 'auto' && !!darkQuery?.matches);
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f1520' : '#ffffff');
+}
+applyTheme();
+darkQuery?.addEventListener?.('change', applyTheme);
+
+$('#set-theme').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.settings.theme = b.dataset.v;
+  save(); applyTheme(); renderSettings();
+});
 
 $('#set-weekstart').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
