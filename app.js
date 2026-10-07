@@ -1570,7 +1570,7 @@ function applyTheme() {
   const pref = state.settings.theme || 'light';
   const dark = pref === 'dark' || (pref === 'auto' && !!darkQuery?.matches);
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f1520' : '#ffffff');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f1520' : '#1c2a4a');
 }
 applyTheme();
 darkQuery?.addEventListener?.('change', applyTheme);

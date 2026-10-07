@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>Goalie</title>
   <meta name="description" content="Set goals for the behaviors you want to grow or cut back, and watch your progress.">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#1c2a4a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Goalie">
   <link rel="manifest" href="manifest.webmanifest?v=8">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/goalie-nb-192.png">
@@ -27,6 +27,8 @@
   </script>
 </head>
 <body>
+  <!-- Fills the area behind the iPhone clock/battery (the app draws under it). -->
+  <div class="status-bg" aria-hidden="true"></div>
 
   <!-- HOME -->
   <section id="screen-today" class="screen active">
@@ -79,7 +81,7 @@
     <form id="create-form" class="form-scroll" autocomplete="off">
       <label class="field-label" for="f-name">GOAL TITLE</label>
       <div class="name-row">
-        <input id="f-name" class="text-input" type="text" maxlength="40" placeholder="Smoking, Reading, Workout, etc.">
+        <input id="f-name" class="text-input" type="text" maxlength="40" placeholder="Running, Reading, Workout, etc.">
         <button type="button" class="icon-btn" id="btn-idea" aria-label="Suggestions">
           <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#1c2a4a" stroke-width="1.8" stroke-linecap="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg>
         </button>
@@ -87,10 +89,10 @@
       <div id="idea-chips" class="chips hidden"></div>
 
       <label class="field-label" for="f-examples">EXAMPLES</label>
-      <textarea id="f-examples" class="text-area" rows="3" maxlength="500" placeholder="What counts? e.g. Lighting a cigarette, taking a puff from a vape"></textarea>
+      <textarea id="f-examples" class="text-area" rows="3" maxlength="500" placeholder="What counts? e.g. A run outside or on a treadmill, jogging with a friend"></textarea>
 
       <label class="field-label" for="f-nonexamples">NON-EXAMPLES</label>
-      <textarea id="f-nonexamples" class="text-area" rows="3" maxlength="500" placeholder="What doesn’t count? e.g. Holding an unlit cigarette, nicotine gum"></textarea>
+      <textarea id="f-nonexamples" class="text-area" rows="3" maxlength="500" placeholder="What doesn’t count? e.g. Walking, a bike ride, stretching before a run"></textarea>
 
       <div class="field-label">DO YOU WANT TO INCREASE OR DECREASE THIS GOAL’S FREQUENCY?</div>
       <div class="seg pills" data-field="direction">
