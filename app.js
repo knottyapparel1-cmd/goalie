@@ -429,7 +429,7 @@ function tallyCard(t, bump) {
       : `${t.name}: ${countText}. Tap to log, hold for options.`,
   },
   el('div', { class: 'card-top' },
-    el('div', { class: 'card-name' }, goalTitle(t)),
+    el('div', { class: 'card-name' }, goalTitle(t, goalReached(t, count))),
     el('div', { class: 'card-period' }, PERIOD_LABEL[t.reset] || 'TODAY', goalBadge(t, count))),
   el('div', { class: `card-count ${sizeClass}` }, countText),
   cardFoot(t, bottom),
@@ -558,29 +558,34 @@ function attachDrag(card, t) {
 }
 
 // Goal title followed by an up (increase) or down (decrease) arrow.
-function goalTitle(t) {
+// reached: an increase goal hit its target this period, so the arrow becomes a checkmark.
+function goalTitle(t, reached = false) {
   const down = t.direction === 'decrease';
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('class', 'dir-arrow');
+  svg.setAttribute('class', reached ? 'dir-arrow is-done' : 'dir-arrow');
   svg.setAttribute('viewBox', '0 0 12 12');
   svg.setAttribute('aria-hidden', 'true');
   const path = document.createElementNS(NS, 'path');
-  path.setAttribute('d', down ? 'M6 2v8M2.5 6.5 6 10l3.5-3.5' : 'M6 10V2M2.5 5.5 6 2l3.5 3.5');
+  path.setAttribute('d', reached ? 'M2 6.5 4.8 9.2 10 3' : down ? 'M6 2v8M2.5 6.5 6 10l3.5-3.5' : 'M6 10V2M2.5 5.5 6 2l3.5 3.5');
   svg.append(path);
   return [
     el('span', { class: 'name-text' }, t.name),
     svg,
-    el('span', { class: 'sr-only' }, down ? ' (decrease)' : ' (increase)'),
+    el('span', { class: 'sr-only' }, reached ? ' (goal reached)' : down ? ' (decrease)' : ' (increase)'),
   ];
 }
 
+// Increase goals are reached once the count hits the target for the current period.
+// (Decrease goals can't be "reached" mid-period: you could still go over.)
+function goalReached(t, count) {
+  return t.direction !== 'decrease' && t.target > 0 && count >= t.target;
+}
+
+// Red ! when a decrease goal goes over its limit. (Reached increase goals show a ✓ in the title instead.)
 function goalBadge(t, count) {
-  if (!t.target) return null;
-  if (t.direction === 'decrease') {
-    return count > t.target ? el('span', { class: 'card-check over', title: 'Over your goal' }, '!') : null;
-  }
-  return count >= t.target ? el('span', { class: 'card-check', title: 'Goal reached' }, '✓') : null;
+  if (!t.target || t.direction !== 'decrease') return null;
+  return count > t.target ? el('span', { class: 'card-check over', title: 'Over your goal' }, '!') : null;
 }
 
 function attachPress(node, onTapFn, onLongFn) {

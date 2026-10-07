@@ -1207,3 +1207,4 @@ html[data-theme="dark"] .help-hero p { color: rgba(255, 255, 255, .9); }
 .stat-card h3 { display: flex; align-items: center; gap: 6px; }
 .stat-card h3 .dir-arrow { width: .7em; height: .7em; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.dir-arrow.is-done { stroke-width: 2.4; width: .85em; height: .85em; }
