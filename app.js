@@ -78,7 +78,7 @@ const DEFAULT_STATE = () => ({
   tallies: [],
   entries: [],
   trash: [], // recently deleted goals: { id, tally, entries, index, deletedAt }
-  settings: { layout: 'grid', weekStart: 0, reminderFired: {} },
+  settings: { layout: 'grid', weekStart: 0, reminderFired: {}, theme: 'auto' },
 });
 
 const TRASH_DAYS = 30;
@@ -363,8 +363,9 @@ function matchesGroup(t, groupFilter) {
   return t.group === groupFilter;
 }
 
-function renderGroupChips(groupNames, active) {
-  const box = $('#group-chips');
+function renderGroupChips(groupNames, active, box = $('#group-chips'), onPick = value => {
+  state.settings.groupFilter = value; save(); $('#tally-list').scrollTop = 0; renderToday();
+}) {
   box.classList.toggle('hidden', groupNames.length === 0);
   box.innerHTML = '';
   if (!groupNames.length) return;
@@ -374,7 +375,7 @@ function renderGroupChips(groupNames, active) {
     role: 'tab',
     class: `group-chip${value === active ? ' on' : ''}`,
     'aria-selected': String(value === active),
-    onclick: () => { state.settings.groupFilter = value; save(); $('#tally-list').scrollTop = 0; renderToday(); },
+    onclick: () => onPick(value),
   }, label, el('span', { class: 'chip-count' }, String(count(value))));
   box.append(chip('', 'All'));
   groupNames.forEach(g => box.append(chip(g, g)));
@@ -704,6 +705,7 @@ function tallyMenu(t) {
     }, `Undo last (${fmt(lastInPeriod.value)})`) : null,
     el('button', { class: 'sheet-btn', onclick: () => { closeSheet(); setTimeout(() => historySheet(t), 300); } }, 'History'),
     el('button', { class: 'sheet-btn', onclick: () => { closeSheet(); openForm(t); } }, 'Edit'),
+    el('button', { class: 'sheet-btn danger', onclick: () => { closeSheet(); deleteTally(t); } }, 'Delete goal'),
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
   );
 }
@@ -712,6 +714,19 @@ const pad2 = n => String(n).padStart(2, '0');
 const toDateInput = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const toTimeInput = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// "Sun–Sat", "Mon–Fri", "Mon, Wed, Fri", "Sat, Sun"…
+function daysSummary(days) {
+  const set = [...new Set(days)].sort((a, b) => a - b);
+  if (!set.length) return 'No days selected';
+  if (set.length === 7) return 'Sun–Sat';
+  const runs = [];
+  for (const d of set) {
+    const last = runs[runs.length - 1];
+    if (last && d === last[last.length - 1] + 1) last.push(d); else runs.push([d]);
+  }
+  return runs.map(r => (r.length >= 3 ? `${DAY_NAMES[r[0]]}–${DAY_NAMES[r[r.length - 1]]}` : r.map(d => DAY_NAMES[d]).join(', '))).join(', ');
+}
 
 // Swap one sheet for another after the closing animation.
 function switchSheet(fn) { closeSheet(); setTimeout(fn, 300); }
@@ -954,6 +969,7 @@ function syncForm() {
   setSeg('unit', form.unit);
   setSeg('bottomMode', form.bottomMode);
   $$('[data-field="days"] button').forEach(b => b.classList.toggle('on', form.days.includes(+b.dataset.v)));
+  $('#days-summary').textContent = daysSummary(form.days);
   $('#goal-per').textContent = PER_PHRASE[form.reset].trim().toUpperCase();
   renderGoalDesc();
   $('#f-bottom').classList.toggle('hidden', form.bottomMode !== 'custom');
@@ -1360,10 +1376,29 @@ function renderStats() {
   $$('#range-tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === statsState.range));
   $$('.view-btn').forEach(b => b.classList.toggle('on', b.dataset.view === statsState.view));
 
+  // Which goals to show: the Stats page has its own group and period filters.
+  const groupNames = [...new Set(state.tallies.map(t => t.group).filter(Boolean))];
+  let sg = state.settings.statsGroupFilter || '';
+  if (sg && sg !== NO_GROUP && !groupNames.includes(sg)) sg = state.settings.statsGroupFilter = '';
+  const sf = state.settings.statsFilter || 'all';
+  renderGroupChips(groupNames, sg, $('#stats-group-chips'), value => {
+    state.settings.statsGroupFilter = value; save(); $('#stats-list').scrollTop = 0; renderStats();
+  });
+  $$('#stats-filter button').forEach(b => {
+    const on = b.dataset.v === sf;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', String(on));
+  });
+
   const list = $('#stats-list');
   list.innerHTML = '';
   if (!state.tallies.length) {
     list.append(el('div', { class: 'empty' }, el('strong', {}, 'No data yet'), 'Set a goal to see your stats.'));
+    return;
+  }
+  const shown = state.tallies.filter(t => matchesFilter(t, sf) && matchesGroup(t, sg));
+  if (!shown.length) {
+    list.append(el('div', { class: 'empty' }, el('strong', {}, 'No goals here'), 'Pick a different group or ALL at the bottom.'));
     return;
   }
 
@@ -1372,7 +1407,7 @@ function renderStats() {
   const currentIdx = Date.now() >= startMs && Date.now() < endMs ? bucketIndex(Date.now(), r.start) : -1;
   const periodWord = statsState.range.toUpperCase();
 
-  for (const t of state.tallies) {
+  for (const t of shown) {
     const entries = entriesFor(t.id).filter(e => e.ts >= startMs && e.ts < endMs);
     const sums = new Array(r.buckets).fill(0);
     const isDay = statsState.range === 'day';
@@ -1392,20 +1427,49 @@ function renderStats() {
         : `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
 
     const pick = i => pickBucket(t, r, i);
+    const goal = goalForChart(t);
+    const scale = chartScale(t, sums, goal);
     card.append(statsState.view === 'bars'
-      ? barChart(sums, bucketLabels(r), currentIdx, pick, isCheck(t) ? Math.max(1, ...sums) : 0)
-      : lineChart(t, sums, bucketLabels(r), currentIdx, pick));
+      ? barChart(sums, bucketLabels(r), currentIdx, pick, scale, goal)
+      : lineChart(t, sums, bucketLabels(r), currentIdx, pick, scale, goal));
     list.append(card);
   }
 }
 
-// scaleMax: fixed top of the scale (check-off goals use their own small scale).
-function barChart(sums, labels, currentIdx, onPick, scaleMax) {
-  const max = scaleMax || niceMax(Math.max(0, ...sums));
-  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' },
-    el('span', { style: 'top:0' }, fmt(max)),
-    el('span', { style: 'top:50%' }, fmt(max / 2)));
+// The goal per chart step, when the goal's period matches the steps (daily goal on Week/Month, etc.).
+function goalForChart(t) {
+  if (isCheck(t) || !(t.target > 0)) return 0;
+  const range = statsState.range;
+  const fits = (t.reset === 'hour' && range === 'day') ||
+    (t.reset === 'day' && (range === 'week' || range === 'month')) ||
+    (t.reset === 'month' && range === 'year');
+  return fits ? t.target : 0;
+}
+
+// Top of the y-axis: the goal itself (30 for "30 minutes a day"), or the biggest value if one went past it.
+function chartScale(t, sums, goal) {
+  const top = Math.max(0, ...sums);
+  if (isCheck(t)) return Math.max(1, top);
+  if (goal) return Math.max(goal, top);
+  return niceMax(top);
+}
+
+// Y-axis labels: the top value, plus the goal's own level when a day went past it (else the midpoint).
+function yAxisLabels(max, goal, withZero) {
+  const labels = [el('span', { style: 'top:0' }, fmt(max))];
+  if (goal && goal < max) {
+    if (goal / max < 0.88 && goal / max > 0.1) labels.push(el('span', { class: 'y-goal', style: `top:${100 - (goal / max) * 100}%` }, fmt(goal)));
+  } else {
+    labels.push(el('span', { style: 'top:50%' }, fmt(max / 2)));
+  }
+  if (withZero) labels.push(el('span', { style: 'top:100%' }, '0'));
+  return labels;
+}
+
+function barChart(sums, labels, currentIdx, onPick, max, goal) {
+  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' }, yAxisLabels(max, goal, false));
   const bars = el('div', { class: 'bars' },
+    goal ? el('div', { class: 'bar-goal', style: `bottom:${(goal / max) * 100}%`, 'aria-hidden': 'true' }) : null,
     sums.map((v, i) => el('div', { class: `bar-col${i === currentIdx ? ' current' : ''}`, onclick: () => onPick(i) },
       el('div', { class: 'bar-track' },
         el('div', { class: 'bar-fill', style: `height:${Math.max(0, Math.min(100, (v / max) * 100))}%` })))));
@@ -1414,19 +1478,14 @@ function barChart(sums, labels, currentIdx, onPick, scaleMax) {
 }
 
 // Line chart: y = amount in the goal's own unit, one point per day (or per month in Year view).
-function lineChart(t, sums, labels, currentIdx, onPick) {
+function lineChart(t, sums, labels, currentIdx, onPick, max, goal) {
   const n = sums.length;
   const span = n - 1;
   // Don't draw into the future: stop at today in the current period.
   const last = currentIdx >= 0 ? currentIdx : n - 1;
 
-  // Dashed goal line only when the goal's period matches the chart's steps.
   const { range } = statsState;
-  const goalFits = t.target > 0 && (
-    (t.reset === 'hour' && range === 'day') ||
-    (t.reset === 'day' && (range === 'week' || range === 'month')) ||
-    (t.reset === 'month' && range === 'year'));
-  const max = isCheck(t) ? Math.max(1, ...sums) : niceMax(Math.max(0, ...sums, goalFits ? t.target : 0));
+  const goalFits = goal > 0; // dashed goal line only when the goal's period matches the chart's steps
   const yOf = v => 100 - (v / max) * 100;
   const xOf = i => (span ? (i / span) * 100 : 50);
 
@@ -1460,10 +1519,7 @@ function lineChart(t, sums, labels, currentIdx, onPick) {
     plot.append(el('button', { type: 'button', class: 'pt', style: `left:${p.x}%;top:${p.y}%`, 'aria-label': amountText(t, p.v), onclick: () => onPick(p.i) }));
   }
 
-  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h);width:34px' },
-    el('span', { style: 'top:0' }, fmt(max)),
-    el('span', { style: 'top:50%' }, fmt(max / 2)),
-    el('span', { style: 'top:100%' }, '0'));
+  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h);width:34px' }, yAxisLabels(max, goal, true));
   const xl = el('div', { style: 'position:relative;height:22px;margin-top:10px' },
     labels.map((l, i) => (l ? el('span', {
       style: `position:absolute;left:${xOf(i)}%;transform:translateX(-50%);font-size:14px;font-weight:700;color:var(--stat-soft)`,
@@ -1473,6 +1529,14 @@ function lineChart(t, sums, labels, currentIdx, onPick) {
     el('div', { class: 'axis-unit' }, unit.toUpperCase()),
     el('div', { class: 'chart' }, yAxis, el('div', { class: 'plot', style: 'padding-right:10px' }, plot, xl)));
 }
+
+$('#stats-filter').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.settings.statsFilter = b.dataset.v;
+  save();
+  $('#stats-list').scrollTop = 0;
+  renderStats();
+});
 
 $('#range-tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -1546,7 +1610,7 @@ function renderSettings() {
   const sb = document.querySelector('.status-bg')?.offsetHeight || 0;
   const ver = document.querySelector('meta[name="goalie-version"]')?.content || '';
   $('#screen-info').textContent = `Screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · top ${sb} · v${ver}`;
-  $$('#set-theme button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.settings.theme || 'light')));
+  $$('#set-theme button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.settings.theme || 'auto')));
   if (document.activeElement !== $('#set-name')) $('#set-name').value = state.settings.name || '';
   renderTrash();
   $$('#set-weekstart button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.settings.weekStart));
@@ -1571,10 +1635,19 @@ $('#set-name').addEventListener('keydown', e => { if (e.key === 'Enter') e.targe
 // Appearance: light, dark, or follow the phone (auto).
 const darkQuery = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : null;
 function applyTheme() {
-  const pref = state.settings.theme || 'light';
+  const pref = state.settings.theme || 'auto';
   const dark = pref === 'dark' || (pref === 'auto' && !!darkQuery?.matches);
   document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? '#0f1520' : '#ffffff');
+  // Browsers (iPhone especially) can ignore an edited theme-color tag; swapping in a fresh one
+  // makes the top bar recolor immediately.
+  const color = dark ? '#0f1520' : '#ffffff';
+  const old = document.querySelector('meta[name="theme-color"]');
+  if (old?.getAttribute('content') !== color) {
+    const fresh = document.createElement('meta');
+    fresh.name = 'theme-color';
+    fresh.content = color;
+    old ? old.replaceWith(fresh) : document.head.append(fresh);
+  }
 }
 applyTheme();
 
@@ -1745,6 +1818,8 @@ async function checkReminders() {
    ========================================================= */
 function openSheet(...children) {
   const sheet = $('#sheet');
+  sheet.style.transform = '';
+  sheet.style.transition = '';
   sheet.innerHTML = '';
   sheet.append(...children.flat().filter(Boolean));
   $('#sheet-backdrop').classList.add('show');
@@ -1756,6 +1831,45 @@ function closeSheet() {
   if (document.activeElement) document.activeElement.blur();
 }
 $('#sheet-backdrop').addEventListener('click', closeSheet);
+
+// Swipe a sheet down to dismiss it (only when its content is scrolled to the top).
+(() => {
+  const sheet = $('#sheet');
+  let startY = null, dy = 0, dragging = false;
+  sheet.addEventListener('touchstart', e => {
+    if (!sheet.classList.contains('show') || sheet.scrollTop > 0) { startY = null; return; }
+    startY = e.touches[0].clientY; dy = 0; dragging = false;
+  }, { passive: true });
+  sheet.addEventListener('touchmove', e => {
+    if (startY == null) return;
+    dy = e.touches[0].clientY - startY;
+    if (!dragging) {
+      if (dy < 8) { if (dy < -4) startY = null; return; } // moving up = normal scrolling
+      if (sheet.scrollTop > 0) { startY = null; return; }
+      dragging = true;
+      sheet.style.transition = 'none';
+      document.activeElement?.blur?.();
+    }
+    e.preventDefault();
+    sheet.style.transform = `translateY(${Math.max(0, dy)}px)`;
+  }, { passive: false });
+  const end = () => {
+    if (startY == null) return;
+    startY = null;
+    if (!dragging) return;
+    dragging = false;
+    sheet.style.transition = '';
+    if (dy > Math.min(120, sheet.offsetHeight * 0.25)) {
+      sheet.style.transform = 'translateY(110%)';
+      $('#sheet-backdrop').classList.remove('show');
+      setTimeout(() => { sheet.classList.remove('show'); sheet.style.transform = ''; }, 280);
+    } else {
+      sheet.style.transform = '';
+    }
+  };
+  sheet.addEventListener('touchend', end);
+  sheet.addEventListener('touchcancel', end);
+})();
 
 let toastTimer = null;
 function toast(msg, undoFn) {

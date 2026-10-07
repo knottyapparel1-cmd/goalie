@@ -21,7 +21,7 @@
   <script>
     // Apply the saved theme before the page draws, so dark mode doesn't flash white.
     try {
-      var t = (JSON.parse(localStorage.getItem('goalie.v1') || '{}').settings || {}).theme || 'light';
+      var t = (JSON.parse(localStorage.getItem('goalie.v1') || '{}').settings || {}).theme || 'auto';
       var dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
       document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
       document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#0f1520' : '#ffffff');
@@ -103,6 +103,7 @@
       </div>
 
       <div class="field-label">WHICH DAYS WILL BE MEASURED?</div>
+      <div class="days-summary" id="days-summary" aria-live="polite"></div>
       <div class="days multi" data-field="days">
         <button type="button" data-v="0">SUN</button>
         <button type="button" data-v="1">MON</button>
@@ -207,7 +208,15 @@
       <button type="button" data-v="month">MONTH</button>
       <button type="button" data-v="year">YEAR</button>
     </div>
+    <div id="stats-group-chips" class="group-chips stats-group-chips hidden" role="tablist" aria-label="Groups"></div>
     <div id="stats-list" class="stats-list"></div>
+    <div class="filter-bar" id="stats-filter" role="tablist" aria-label="Show goals">
+      <button type="button" role="tab" data-v="all">ALL</button>
+      <button type="button" role="tab" data-v="day">DAILY</button>
+      <button type="button" role="tab" data-v="week">WEEKLY</button>
+      <button type="button" role="tab" data-v="month">MONTHLY</button>
+      <button type="button" role="tab" data-v="year">YEARLY</button>
+    </div>
     <nav class="stats-bar">
       <button class="icon-btn view-btn" data-view="bars" aria-label="Totals chart">
         <svg viewBox="0 0 32 32" width="34" height="34" fill="none" stroke="#9aa0a8" stroke-width="1.4"><rect x="4" y="12" width="5" height="16" rx="1"/><rect x="10.5" y="4" width="5" height="24" rx="1"/><rect x="17" y="18" width="5" height="10" rx="1"/><rect x="23.5" y="10" width="5" height="18" rx="1"/></svg>
