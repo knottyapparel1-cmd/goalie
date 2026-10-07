@@ -527,7 +527,7 @@ button {
 }
 .y-axis span { position: absolute; right: 0; transform: translateY(-50%); }
 .plot { flex: 1; min-width: 0; }
-.bars { display: flex; align-items: stretch; justify-content: space-between; height: 170px; }
+.bars { display: flex; align-items: stretch; justify-content: space-between; height: var(--chart-h); }
 .bar-col { flex: 1; display: flex; justify-content: center; }
 .bar-track {
   position: relative;
@@ -560,7 +560,7 @@ button {
 
 .scatter {
   position: relative;
-  height: 170px;
+  height: var(--chart-h);
   border: 1px solid rgba(0,0,0,.1);
   background-image:
     linear-gradient(rgba(0,0,0,.08) 1px, transparent 1px),
@@ -1069,3 +1069,23 @@ button {
 .layout-toggle .icon-to-grid { display: none; }
 .layout-toggle.is-list .icon-to-grid { display: block; }
 .layout-toggle.is-list .icon-to-list { display: none; }
+
+/* ---------- Compact stats: a whole card fits on screen ---------- */
+#screen-stats {
+  /* chart height follows the screen so header + one full card always fit */
+  --chart-h: clamp(84px, calc(100vh - 560px), 150px);
+}
+#screen-stats .modal-head { padding-top: 22px; }
+.modal-head .stats-title { font-size: 24px; }
+#screen-stats .range-row { padding-top: 8px; padding-bottom: 4px; }
+#screen-stats .range-row h2 { font-size: 20px; }
+#screen-stats .seg.tabs button { height: 34px; font-size: 13px; }
+.stats-list { padding-top: 12px; gap: 12px; }
+.stats-hint { font-size: 12px; }
+.stat-card { padding: 14px 14px 12px 10px; border-radius: 20px; }
+.stat-card h3 { margin-left: 8px; font-size: 20px; }
+.stat-sub { margin: 4px 0 10px 8px; font-size: 12px; letter-spacing: .06em; }
+.axis-unit { margin: 0 0 6px 8px; }
+.stat-card .x-labels { margin-top: 6px; }
+.stat-card .x-labels span { font-size: 12px; }
+#screen-stats .stats-bar { padding-top: 6px; }

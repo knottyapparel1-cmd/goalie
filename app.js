@@ -1267,7 +1267,7 @@ function renderStats() {
 
 function barChart(sums, labels, currentIdx, onPick) {
   const max = niceMax(Math.max(0, ...sums));
-  const yAxis = el('div', { class: 'y-axis', style: 'height:170px' },
+  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' },
     el('span', { style: 'top:0' }, fmt(max)),
     el('span', { style: 'top:50%' }, fmt(max / 2)));
   const bars = el('div', { class: 'bars' },
@@ -1325,7 +1325,7 @@ function lineChart(t, sums, labels, currentIdx, onPick) {
     plot.append(el('button', { type: 'button', class: 'pt', style: `left:${p.x}%;top:${p.y}%`, 'aria-label': amountText(t, p.v), onclick: () => onPick(p.i) }));
   }
 
-  const yAxis = el('div', { class: 'y-axis', style: 'height:170px;width:34px' },
+  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h);width:34px' },
     el('span', { style: 'top:0' }, fmt(max)),
     el('span', { style: 'top:50%' }, fmt(max / 2)),
     el('span', { style: 'top:100%' }, '0'));
