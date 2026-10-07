@@ -802,7 +802,7 @@ function pickBucket(t, r, i) {
   daySheet(t, day);
 }
 
-const FILTER_NAMES = { all: 'all', day: 'daily', week: 'weekly', year: 'yearly' };
+const FILTER_NAMES = { all: 'all', day: 'daily', week: 'weekly', month: 'monthly', year: 'yearly' };
 
 function matchesFilter(t, filter) {
   return filter === 'all' || t.reset === filter;

@@ -1134,10 +1134,17 @@ button {
 /* ---------- Edge-to-edge header & footer ----------
    Header icons sit right under the status bar; footer icons sit low, just clear of
    the iPhone home bar (the home bar's safe area is ~34px; we use most of it). */
-.today-header { margin-top: 0; height: 54px; }
+.today-header { margin-top: 0; height: 46px; }
 .bottom-bar,
 #screen-stats .stats-bar {
   padding-top: 2px;
-  padding-bottom: max(4px, calc(var(--safe-bottom) - 20px));
+  padding-bottom: max(12px, calc(var(--safe-bottom) - 10px));
 }
 .filter-bar { margin-bottom: 2px; }
+
+/* Five filter buttons: keep them on one line on small phones */
+.filter-bar button { letter-spacing: .04em; font-size: 11.5px; }
+@media (max-width: 360px) {
+  .filter-bar { gap: 2px; padding: 3px; }
+  .filter-bar button { font-size: 10px; letter-spacing: 0; padding: 0; }
+}
