@@ -1404,7 +1404,7 @@ function lineChart(t, sums, labels, currentIdx, onPick) {
     }, l) : null)));
 
   return el('div', {},
-    el('div', { class: 'axis-unit' }, unit.toUpperCase(), goalFits ? el('span', { class: 'axis-goal' }, `- - goal ${fmt(t.target)}`) : null),
+    el('div', { class: 'axis-unit' }, unit.toUpperCase()),
     el('div', { class: 'chart' }, yAxis, el('div', { class: 'plot', style: 'padding-right:10px' }, plot, xl)));
 }
 
