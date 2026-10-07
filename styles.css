@@ -1315,3 +1315,13 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
 .stat-card h3 { display: block; line-height: 1.2; }
 .stat-card h3 .name-last .dir-arrow { width: .7em; height: .7em; }
 .name-last.can-break { white-space: normal; }   /* a very long single word may break so nothing is cut off */
+
+/* List view, wide counts (times, money): title runs across the top, count sits beside the controls below */
+.tally-list.list .card.wide-count { grid-template-areas: "top top" "foot count"; row-gap: 6px; }
+.tally-list.list .card.wide-count .card-count { justify-self: end; }
+/* keep list cards inside the screen: columns may shrink, the title wraps instead of widening the card */
+.tally-list.list .grid { grid-template-columns: minmax(0, 1fr); }
+.tally-list.list .card { grid-template-columns: minmax(0, 1fr) auto; }
+.tally-list.list .card.wide-count .card-count { font-size: 30px; }
+.tally-list.list .card.wide-count .card-count.small,
+.tally-list.list .card.wide-count .card-count.tiny { font-size: 26px; }

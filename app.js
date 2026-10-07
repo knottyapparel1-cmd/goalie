@@ -425,7 +425,8 @@ function tallyCard(t, bump) {
   }
 
   const card = el('div', {
-    class: `card ${cardColorClass(t)}${tracksToday ? '' : ' off-day'}${bump ? ' bump' : ''}`,
+    // wide-count: times / money like "12:30/30:00" — in list view the title gets its own full-width line
+    class: `card ${cardColorClass(t)}${tracksToday ? '' : ' off-day'}${bump ? ' bump' : ''}${!isCheck(t) && countText.length > 6 ? ' wide-count' : ''}`,
     style: cardColorStyle(t),
     role: 'button',
     'data-id': t.id,
