@@ -1233,6 +1233,3 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
   z-index: 90;
   pointer-events: none;
 }
-
-/* Full-height screens on iPhone home-screen apps (see fitToScreen in app.js) */
-.screen { bottom: auto; height: var(--app-h, 100%); }

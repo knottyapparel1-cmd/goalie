@@ -1574,17 +1574,6 @@ function applyTheme() {
 }
 applyTheme();
 
-// iPhone home-screen apps that draw under the status bar get a page shorter than the screen,
-// which pushed the footer up. Size the screens to the real screen height instead.
-function fitToScreen() {
-  const standalone = navigator.standalone === true || !!window.matchMedia?.('(display-mode: standalone)').matches;
-  let h = window.innerHeight;
-  if (standalone && screen.height > h && Math.abs(screen.width - window.innerWidth) < 4) h = screen.height;
-  document.documentElement.style.setProperty('--app-h', h + 'px');
-}
-fitToScreen();
-window.addEventListener('resize', fitToScreen);
-window.addEventListener('orientationchange', () => setTimeout(fitToScreen, 300));
 darkQuery?.addEventListener?.('change', applyTheme);
 
 $('#set-theme').addEventListener('click', e => {
