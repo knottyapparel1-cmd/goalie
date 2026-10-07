@@ -9,8 +9,8 @@
   "background_color": "#ffffff",
   "theme_color": "#ffffff",
   "icons": [
-    { "src": "icons/goalie-n-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icons/goalie-n-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icons/goalie-n-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "icons/goalie-nb-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/goalie-nb-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/goalie-nb-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

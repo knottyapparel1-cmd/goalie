@@ -1,15 +1,15 @@
 // Bump this when you change any app file so phones pick up the new version.
-const CACHE = 'goalie-v47';
+const CACHE = 'goalie-v48';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
   './app.js',
   './manifest.webmanifest',
-  './icons/goalie-n-192.png',
-  './icons/goalie-n-512.png',
-  './icons/goalie-n-touch-180.png',
-  './icons/goalie-n-maskable-512.png',
+  './icons/goalie-nb-192.png',
+  './icons/goalie-nb-512.png',
+  './icons/goalie-nb-touch-180.png',
+  './icons/goalie-nb-maskable-512.png',
 ];
 
 self.addEventListener('install', event => {
