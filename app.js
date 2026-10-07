@@ -227,8 +227,20 @@ $$('[data-close]').forEach(btn => btn.addEventListener('click', () => {
 let editMode = false;
 let dragActive = false; // a card is being dragged; hold off re-rendering until it's dropped
 
+// Snapshot taken when edit mode starts, so CANCEL can undo everything done since.
+let editSnapshot = null;
+const EDIT_SETTINGS = ['groupFilter', 'collapsedGroups', 'filter'];
+
 function setEditMode(on) {
+  const wasEditing = editMode;
   editMode = on && state.tallies.length > 0;
+  if (editMode && !wasEditing) {
+    editSnapshot = JSON.parse(JSON.stringify({
+      tallies: state.tallies, entries: state.entries, trash: state.trash,
+      settings: Object.fromEntries(EDIT_SETTINGS.map(k => [k, state.settings[k]])),
+    }));
+  }
+  if (!editMode) editSnapshot = null; // DONE (or leaving the screen) keeps the changes
   const btn = $('#btn-edit');
   btn.classList.toggle('on', editMode);
   btn.setAttribute('aria-pressed', String(editMode));
@@ -247,6 +259,9 @@ function renderToday(bumpId) {
   layoutBtn.setAttribute('aria-label', state.settings.layout === 'list' ? 'Switch to square cards' : 'Switch to list view');
   list.classList.toggle('editing', editMode);
   $('#btn-edit').classList.toggle('on', editMode);
+  $('#btn-edit-cancel').classList.toggle('hidden', !editMode);
+  $('.today-header').classList.toggle('editing', editMode);
+  if (!editMode) editSnapshot = null;
   list.innerHTML = '';
 
   const filter = state.settings.filter || 'all';
@@ -784,6 +799,20 @@ $('#goal-filter').addEventListener('click', e => {
 });
 
 $('#btn-edit').addEventListener('click', () => setEditMode(!editMode));
+
+// CANCEL: put goals, entries, Recently Deleted and group settings back to how they were.
+$('#btn-edit-cancel').addEventListener('click', () => {
+  const snap = editSnapshot;
+  if (snap) {
+    state.tallies = snap.tallies;
+    state.entries = snap.entries;
+    state.trash = snap.trash;
+    EDIT_SETTINGS.forEach(k => { state.settings[k] = snap.settings[k]; });
+    save();
+  }
+  setEditMode(false);
+  toast('Edits canceled');
+});
 
 $('#btn-layout').addEventListener('click', () => {
   state.settings.layout = state.settings.layout === 'list' ? 'grid' : 'list';

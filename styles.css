@@ -1080,7 +1080,7 @@ button {
 #screen-stats .range-row { padding-top: 8px; padding-bottom: 4px; }
 #screen-stats .range-row h2 { font-size: 20px; }
 #screen-stats .seg.tabs button { height: 34px; font-size: 13px; }
-.stats-list { padding-top: 12px; gap: 12px; }
+.stats-list { padding-top: 24px; gap: 12px; }  /* breathing room under DAY/WEEK/MONTH/YEAR */
 .stats-hint { font-size: 12px; }
 .stat-card { padding: 14px 14px 12px 10px; border-radius: 20px; }
 .stat-card h3 { margin-left: 8px; font-size: 20px; }
@@ -1089,3 +1089,21 @@ button {
 .stat-card .x-labels { margin-top: 6px; }
 .stat-card .x-labels span { font-size: 12px; }
 #screen-stats .stats-bar { padding-top: 6px; }
+
+/* ---------- Edit mode: DONE + red CANCEL ---------- */
+.edit-cancel {
+  position: absolute;
+  left: 76px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+.edit-cancel:active { background: #c93b40; }
+.today-header.editing .edit-toggle { min-width: 0; padding: 0 4px; }
+/* DONE + CANCEL need the room while editing; the title comes back after */
+.today-header.editing h1 { visibility: hidden; }
