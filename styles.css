@@ -1241,11 +1241,11 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
 
 .screen-info { font-size: 11px; opacity: .7; margin-top: 16px; }
 
-/* ---------- Footer: icons sit exactly 20px above the bottom of the screen ---------- */
+/* ---------- Footer: icons sit exactly 30px above the bottom of the screen ---------- */
 .bottom-bar,
 #screen-stats .stats-bar {
   align-items: flex-end;
-  padding-bottom: 20px;
+  padding-bottom: 30px;
 }
 /* measure to the visible icon, not its invisible button box; keep a full-size tap area */
 .bottom-bar .icon-btn,
