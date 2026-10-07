@@ -558,7 +558,7 @@ function attachDrag(card, t) {
 }
 
 // Goal title followed by an up (increase) or down (decrease) arrow.
-// reached: an increase goal hit its target this period, so the arrow becomes a checkmark.
+// reached: the goal is met (or, for decrease goals, still within the limit), so the arrow becomes a checkmark.
 function goalTitle(t, reached = false) {
   const down = t.direction === 'decrease';
   const NS = 'http://www.w3.org/2000/svg';
@@ -576,13 +576,14 @@ function goalTitle(t, reached = false) {
   ];
 }
 
-// Increase goals are reached once the count hits the target for the current period.
-// (Decrease goals can't be "reached" mid-period: you could still go over.)
+// Increase goals: reached once the count hits the target this period.
+// Decrease goals: on track (checkmark) while the count is at or under the limit.
 function goalReached(t, count) {
-  return t.direction !== 'decrease' && t.target > 0 && count >= t.target;
+  if (!(t.target > 0)) return false;
+  return t.direction === 'decrease' ? count <= t.target : count >= t.target;
 }
 
-// Red ! when a decrease goal goes over its limit. (Reached increase goals show a ✓ in the title instead.)
+// Red ! when a decrease goal goes over its limit. (Met goals show a ✓ in the title instead.)
 function goalBadge(t, count) {
   if (!t.target || t.direction !== 'decrease') return null;
   return count > t.target ? el('span', { class: 'card-check over', title: 'Over your goal' }, '!') : null;
