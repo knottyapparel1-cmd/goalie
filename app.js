@@ -1609,7 +1609,7 @@ async function checkReminders() {
     } else if ('Notification' in window && Notification.permission === 'granted') {
       try {
         const reg = await navigator.serviceWorker?.getRegistration();
-        if (reg) reg.showNotification(t.name, { body, icon: 'icons/goalie-white-192.png', tag: t.id });
+        if (reg) reg.showNotification(t.name, { body, icon: 'icons/goalie-w2-192.png', tag: t.id });
         else new Notification(t.name, { body });
       } catch (e) { /* ignore */ }
     }
