@@ -1276,3 +1276,17 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
   z-index: 1;
 }
 .y-axis .y-goal { font-weight: 800; }
+
+/* ---------- Stats charts: bar and line cards share the same dimensions ---------- */
+.stat-card .y-axis { width: 34px; }
+.stat-card .x-labels { height: 16px; margin-top: 6px; }
+.stat-card .x-labels span { font-size: 12px; line-height: 16px; }
+.stat-card .x-labels.line-x { position: relative; display: block; }
+.stat-card .x-labels.line-x span { position: absolute; top: 0; width: auto; transform: translateX(-50%); font-weight: 700; color: var(--stat-soft); }
+.stat-card .line-plot { padding-right: 10px; }
+.stat-card .plot:not(.line-plot) { padding-right: 10px; }
+.chart-caption { margin: 0 0 6px 8px; font-size: 11px; font-weight: 800; letter-spacing: .1em; color: var(--stat-soft); }
+
+/* Stats footer lines up with the home footer: same icon center line, same filter-bar height */
+#screen-stats .stats-bar { padding-bottom: 26px; }
+#screen-stats .filter-bar { margin-bottom: 6px; }

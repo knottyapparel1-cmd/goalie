@@ -1427,11 +1427,25 @@ function renderStats() {
         : `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
 
     const pick = i => pickBucket(t, r, i);
-    const goal = goalForChart(t);
-    const scale = chartScale(t, sums, goal);
-    card.append(statsState.view === 'bars'
-      ? barChart(sums, bucketLabels(r), currentIdx, pick, scale, goal)
-      : lineChart(t, sums, bucketLabels(r), currentIdx, pick, scale, goal));
+    const isBars = statsState.view === 'bars';
+    let values = sums, goal = goalForChart(t), caption = null;
+    if (statsState.range === 'year') {
+      // How many goal periods each month counted (tracked days so far, in the goal's own period).
+      const counts = sums.map((_, i) => periodsCounted(t, r.start.getFullYear(), i));
+      const per = PERIOD_NOUN[t.reset] || 'day';
+      if (isBars) {
+        values = sums.map((v, i) => (counts[i] > 0 ? v / counts[i] : 0));
+        goal = isCheck(t) ? 0 : (t.target > 0 ? t.target : 0);
+        caption = `AVERAGE PER ${per.toUpperCase()} EACH MONTH`;
+      } else {
+        goal = !isCheck(t) && t.target > 0 ? counts.map(c => (c > 0 ? t.target * c : null)) : 0;
+        caption = 'TOTAL EACH MONTH';
+      }
+    }
+    const scale = chartScale(t, values, goal);
+    card.append(isBars
+      ? barChart(values, bucketLabels(r), currentIdx, pick, scale, goal, caption)
+      : lineChart(t, values, bucketLabels(r), currentIdx, pick, scale, goal, caption));
     list.append(card);
   }
 }
@@ -1440,15 +1454,39 @@ function renderStats() {
 function goalForChart(t) {
   if (isCheck(t) || !(t.target > 0)) return 0;
   const range = statsState.range;
-  const fits = (t.reset === 'hour' && range === 'day') ||
+  const fits = (range === 'day' && (t.reset === 'hour' || t.reset === 'day')) ||
     (t.reset === 'day' && (range === 'week' || range === 'month')) ||
     (t.reset === 'month' && range === 'year');
   return fits ? t.target : 0;
 }
 
+const PERIOD_NOUN = { minute: 'minute', hour: 'hour', day: 'day', week: 'week', month: 'month', year: 'year', never: 'day' };
+
+// Goal periods a month "counted": tracked days in that month up to today, expressed in the goal's period
+// (7 days = 1 week, any tracked day = 1 month…). Future months count 0.
+function periodsCounted(t, year, month) {
+  // Count from the 1st of the month, or from the day the goal was created if that's later.
+  const created = t.createdAt ? startOfDay(new Date(t.createdAt)).getTime() : 0;
+  const first = new Date(Math.max(new Date(year, month, 1).getTime(), created));
+  const end = Math.min(new Date(year, month + 1, 1).getTime(), addDays(startOfDay(new Date()), 1).getTime());
+  let days = 0;
+  for (let d = new Date(first); d.getTime() < end; d = addDays(d, 1)) {
+    if (!t.days || t.days.includes(d.getDay())) days++;
+  }
+  switch (t.reset) {
+    case 'minute': return days * 1440;
+    case 'hour': return days * 24;
+    case 'week': return days / 7;
+    case 'month': return days > 0 ? 1 : 0;
+    case 'year': return days / 365;
+    default: return days;
+  }
+}
+
 // Top of the y-axis: the goal itself (30 for "30 minutes a day"), or the biggest value if one went past it.
 function chartScale(t, sums, goal) {
   const top = Math.max(0, ...sums);
+  if (Array.isArray(goal)) return Math.max(top, ...goal.filter(g => g != null), 0) || niceMax(top);
   if (isCheck(t)) return Math.max(1, top);
   if (goal) return Math.max(goal, top);
   return niceMax(top);
@@ -1456,7 +1494,8 @@ function chartScale(t, sums, goal) {
 
 // Y-axis labels: the top value, plus the goal's own level when a day went past it (else the midpoint).
 function yAxisLabels(max, goal, withZero) {
-  const labels = [el('span', { style: 'top:0' }, fmt(max))];
+  const labels = [el('span', { style: 'top:0' }, fmt(Math.round(max * 100) / 100))];
+  if (Array.isArray(goal)) goal = 0;
   if (goal && goal < max) {
     if (goal / max < 0.88 && goal / max > 0.1) labels.push(el('span', { class: 'y-goal', style: `top:${100 - (goal / max) * 100}%` }, fmt(goal)));
   } else {
@@ -1466,7 +1505,7 @@ function yAxisLabels(max, goal, withZero) {
   return labels;
 }
 
-function barChart(sums, labels, currentIdx, onPick, max, goal) {
+function barChart(sums, labels, currentIdx, onPick, max, goal, caption) {
   const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' }, yAxisLabels(max, goal, false));
   const bars = el('div', { class: 'bars' },
     goal ? el('div', { class: 'bar-goal', style: `bottom:${(goal / max) * 100}%`, 'aria-hidden': 'true' }) : null,
@@ -1474,18 +1513,20 @@ function barChart(sums, labels, currentIdx, onPick, max, goal) {
       el('div', { class: 'bar-track' },
         el('div', { class: 'bar-fill', style: `height:${Math.max(0, Math.min(100, (v / max) * 100))}%` })))));
   const xl = el('div', { class: 'x-labels' }, labels.map(l => el('span', { style: 'display:flex;justify-content:center' }, l)));
-  return el('div', { class: 'chart' }, yAxis, el('div', { class: 'plot' }, bars, xl));
+  return el('div', {},
+    caption ? el('div', { class: 'chart-caption' }, caption) : null,
+    el('div', { class: 'chart' }, yAxis, el('div', { class: 'plot' }, bars, xl)));
 }
 
 // Line chart: y = amount in the goal's own unit, one point per day (or per month in Year view).
-function lineChart(t, sums, labels, currentIdx, onPick, max, goal) {
+function lineChart(t, sums, labels, currentIdx, onPick, max, goal, caption) {
   const n = sums.length;
   const span = n - 1;
   // Don't draw into the future: stop at today in the current period.
   const last = currentIdx >= 0 ? currentIdx : n - 1;
 
   const { range } = statsState;
-  const goalFits = goal > 0; // dashed goal line only when the goal's period matches the chart's steps
+  const goalFits = Array.isArray(goal) ? goal.some(g => g != null) : goal > 0; // dashed goal line only when the goal fits the chart's steps
   const yOf = v => 100 - (v / max) * 100;
   const xOf = i => (span ? (i / span) * 100 : 50);
 
@@ -1499,12 +1540,20 @@ function lineChart(t, sums, labels, currentIdx, onPick, max, goal) {
   svg.setAttribute('viewBox', '0 0 100 100');
   svg.setAttribute('preserveAspectRatio', 'none');
   if (goalFits) {
-    const goal = document.createElementNS(NS, 'line');
-    goal.setAttribute('class', 'goal-line');
-    goal.setAttribute('x1', '0'); goal.setAttribute('x2', '100');
-    goal.setAttribute('y1', String(yOf(t.target))); goal.setAttribute('y2', String(yOf(t.target)));
-    goal.setAttribute('vector-effect', 'non-scaling-stroke');
-    svg.append(goal);
+    const g = Array.isArray(goal)
+      // Year: the goal for each month (goal × days counted), joined month to month
+      ? document.createElementNS(NS, 'polyline')
+      : document.createElementNS(NS, 'line');
+    g.setAttribute('class', 'goal-line');
+    if (Array.isArray(goal)) {
+      g.setAttribute('points', goal.map((v, i) => (v == null ? null : `${xOf(i)},${yOf(v)}`)).filter(Boolean).join(' '));
+      g.setAttribute('fill', 'none');
+    } else {
+      g.setAttribute('x1', '0'); g.setAttribute('x2', '100');
+      g.setAttribute('y1', String(yOf(goal))); g.setAttribute('y2', String(yOf(goal)));
+    }
+    g.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.append(g);
   }
   if (points.length > 1) {
     const line = document.createElementNS(NS, 'polyline');
@@ -1514,20 +1563,17 @@ function lineChart(t, sums, labels, currentIdx, onPick, max, goal) {
   }
   plot.append(svg);
 
-  const unit = unitLabel(t);
   for (const p of points) {
     plot.append(el('button', { type: 'button', class: 'pt', style: `left:${p.x}%;top:${p.y}%`, 'aria-label': amountText(t, p.v), onclick: () => onPick(p.i) }));
   }
 
-  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h);width:34px' }, yAxisLabels(max, goal, true));
-  const xl = el('div', { style: 'position:relative;height:22px;margin-top:10px' },
-    labels.map((l, i) => (l ? el('span', {
-      style: `position:absolute;left:${xOf(i)}%;transform:translateX(-50%);font-size:14px;font-weight:700;color:var(--stat-soft)`,
-    }, l) : null)));
+  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' }, yAxisLabels(max, goal, false));
+  const xl = el('div', { class: 'x-labels line-x' },
+    labels.map((l, i) => (l ? el('span', { style: `left:${xOf(i)}%` }, l) : null)));
 
   return el('div', {},
-    el('div', { class: 'axis-unit' }, unit.toUpperCase()),
-    el('div', { class: 'chart' }, yAxis, el('div', { class: 'plot', style: 'padding-right:10px' }, plot, xl)));
+    caption ? el('div', { class: 'chart-caption' }, caption) : null,
+    el('div', { class: 'chart' }, yAxis, el('div', { class: 'plot line-plot' }, plot, xl)));
 }
 
 $('#stats-filter').addEventListener('click', e => {
@@ -1678,8 +1724,16 @@ darkQuery?.addEventListener?.('change', applyTheme);
 
 $('#set-theme').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.v === (state.settings.theme || 'auto')) return;
   state.settings.theme = b.dataset.v;
   save(); applyTheme(); renderSettings();
+  // iPhone only picks the top bar's color when a home-screen app starts, so restart it right away
+  // (and come back to Settings) instead of waiting for the next launch.
+  const homeScreenApp = navigator.standalone === true || !!window.matchMedia?.('(display-mode: standalone)').matches;
+  if (homeScreenApp) {
+    sessionStorage.setItem('goalie-reopen', 'settings');
+    setTimeout(() => location.reload(), 150);
+  }
 });
 
 $('#set-weekstart').addEventListener('click', e => {
@@ -1886,6 +1940,11 @@ function toast(msg, undoFn) {
    Boot
    ========================================================= */
 renderToday();
+if (sessionStorage.getItem('goalie-reopen') === 'settings') {
+  sessionStorage.removeItem('goalie-reopen');
+  renderSettings();
+  openScreen('settings');
+}
 checkReminders();
 setInterval(() => { renderToday(); checkReminders(); }, 60000);
 document.addEventListener('visibilitychange', () => {
