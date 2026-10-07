@@ -1148,3 +1148,7 @@ button {
   .filter-bar { gap: 2px; padding: 3px; }
   .filter-bar button { font-size: 10px; letter-spacing: 0; padding: 0; }
 }
+
+/* Equal space between the filter words: each button is its word's width plus an equal share of the extra room */
+.filter-bar button { flex: 1 1 auto; padding: 0 4px; }
+@media (max-width: 360px) { .filter-bar button { padding: 0 2px; } }
