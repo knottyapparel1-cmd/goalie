@@ -1544,9 +1544,8 @@ function renderTrash() {
 function renderSettings() {
   // Small readout to help tune the layout on a specific phone.
   const sb = document.querySelector('.status-bg')?.offsetHeight || 0;
-  const fit = document.documentElement.classList.contains('fit-screen') ? 'on' : 'off';
   const ver = document.querySelector('meta[name="goalie-version"]')?.content || '';
-  $('#screen-info').textContent = `Screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · top ${sb} · fit ${fit} · v${ver}`;
+  $('#screen-info').textContent = `Screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · top ${sb} · v${ver}`;
   $$('#set-theme button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.settings.theme || 'light')));
   if (document.activeElement !== $('#set-name')) $('#set-name').value = state.settings.name || '';
   renderTrash();
@@ -1601,25 +1600,6 @@ async function checkForNewVersion() {
 checkForNewVersion();
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForNewVersion(); });
 
-// iPhone home-screen app drawing under the clock (black-translucent): iOS can report a page shorter
-// than the screen by the status-bar height, which left the footer floating too high. Only in that exact
-// case (status-bar area present, portrait, page shorter than the screen) size the app to the real screen.
-function fitToScreen() {
-  const root = document.documentElement;
-  const standalone = navigator.standalone === true || !!window.matchMedia?.('(display-mode: standalone)').matches;
-  const underClock = (document.querySelector('.status-bg')?.offsetHeight || 0) > 0;
-  const portrait = Math.abs(screen.width - window.innerWidth) < 4;
-  const short = screen.height - window.innerHeight;
-  if (standalone && underClock && portrait && short > 0 && short < 160) {
-    root.style.setProperty('--app-h', screen.height + 'px');
-    root.classList.add('fit-screen');
-  } else {
-    root.classList.remove('fit-screen');
-  }
-}
-fitToScreen();
-window.addEventListener('resize', fitToScreen);
-window.addEventListener('orientationchange', () => setTimeout(fitToScreen, 300));
 
 darkQuery?.addEventListener?.('change', applyTheme);
 
