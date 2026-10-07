@@ -1444,9 +1444,13 @@ function renderStats() {
       const counts = sums.map((_, i) => periodsCounted(t, r.start.getFullYear(), i));
       const per = PERIOD_NOUN[t.reset] || 'day';
       if (isBars) {
-        values = sums.map((v, i) => (counts[i] > 0 ? v / counts[i] : 0));
+        // Average per active period (the days, weeks… you actually logged), the same way the card's
+        // "per active day" number is worked out.
+        const activeByMonth = sums.map(() => new Set());
+        for (const e of entries) activeByMonth[new Date(e.ts).getMonth()].add(activePeriodKey(t.reset, e.ts));
+        values = sums.map((v, i) => (activeByMonth[i].size ? v / activeByMonth[i].size : 0));
         goal = isCheck(t) ? 0 : (t.target > 0 ? t.target : 0);
-        caption = `AVERAGE PER ${per.toUpperCase()} EACH MONTH`;
+        caption = `AVERAGE PER ACTIVE ${per.toUpperCase()} EACH MONTH`;
       } else {
         goal = !isCheck(t) && t.target > 0 ? counts.map(c => (c > 0 ? t.target * c : null)) : 0;
         caption = 'TOTAL EACH MONTH';
@@ -1474,9 +1478,24 @@ const PERIOD_NOUN = { minute: 'minute', hour: 'hour', day: 'day', week: 'week', 
 
 // Goal periods a month "counted": tracked days in that month up to today, expressed in the goal's period
 // (7 days = 1 week, any tracked day = 1 month…). Future months count 0.
+// Which goal period an entry falls in (for counting "active" days, weeks…).
+function activePeriodKey(reset, ts) {
+  const d = new Date(ts);
+  switch (reset) {
+    case 'minute': return d.getTime() - (d.getTime() % 60000);
+    case 'hour': return dayKey(d) + ':' + d.getHours();
+    case 'week': return dayKey(startOfWeek(d));
+    case 'month': return d.getFullYear() + '-' + d.getMonth();
+    case 'year': return d.getFullYear();
+    default: return dayKey(d);
+  }
+}
+
 function periodsCounted(t, year, month) {
   // Count from the 1st of the month, or from the day the goal was created if that's later.
-  const created = t.createdAt ? startOfDay(new Date(t.createdAt)).getTime() : 0;
+  // Start counting when the goal was created, or earlier if entries were added for earlier days.
+  let created = t.createdAt ? startOfDay(new Date(t.createdAt)).getTime() : 0;
+  for (const e of state.entries) if (e.tallyId === t.id && e.ts < created) created = startOfDay(new Date(e.ts)).getTime();
   const first = new Date(Math.max(new Date(year, month, 1).getTime(), created));
   const end = Math.min(new Date(year, month + 1, 1).getTime(), addDays(startOfDay(new Date()), 1).getTime());
   let days = 0;
