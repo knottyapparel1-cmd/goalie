@@ -1503,29 +1503,37 @@ function renderStats() {
       active.add(isDay ? new Date(e.ts).getHours() : dayKey(e.ts));
       total += e.value;
     }
-    const avg = active.size ? total / active.size : 0;
+    // Average over every measured day (the weekdays picked for the goal), whether or not anything was logged.
+    const measured = measuredDays(t, startMs, endMs);
+    const avg = measured ? total / measured : 0;
+    const totalText = `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''}`;
 
     const card = el('div', { class: `stat-card ${cardColorClass(t)}`, style: cardColorStyle(t, 'stat') },
       el('h3', {}, goalTitle(t)),
       el('div', { class: 'stat-sub' }, isCheck(t)
         ? `${fmt(total)} ✓ ${total === 1 ? 'CHECK-IN' : 'CHECK-INS'}`
-        : `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER ACTIVE ${isDay ? 'HOUR' : 'DAY'}`));
+        : isDay ? totalText
+        : `${totalText} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER MEASURED DAY`));
 
     const pick = i => pickBucket(t, r, i);
     const isBars = statsState.view === 'bars';
     let values = sums, goal = goalForChart(t), caption = null;
-    if (statsState.range === 'year') {
+    const lastIdx = currentIdx >= 0 ? currentIdx : (r.start.getTime() > Date.now() ? -1 : sums.length - 1);
+    if (t.reset === statsState.range && !isCheck(t) && t.target > 0) {
+      // Daily goal on Day, weekly goal on Week…: show the running total climbing toward the goal.
+      let run = 0;
+      values = sums.map((v, i) => (i <= lastIdx ? (run += v) : 0));
+      goal = t.target;
+      caption = 'RUNNING TOTAL';
+    } else if (statsState.range === 'year') {
       // How many goal periods each month counted (tracked days so far, in the goal's own period).
       const counts = sums.map((_, i) => periodsCounted(t, r.start.getFullYear(), i));
       const per = PERIOD_NOUN[t.reset] || 'day';
       if (isBars) {
-        // Average per active period (the days, weeks… you actually logged), the same way the card's
-        // "per active day" number is worked out.
-        const activeByMonth = sums.map(() => new Set());
-        for (const e of entries) activeByMonth[new Date(e.ts).getMonth()].add(activePeriodKey(t.reset, e.ts));
-        values = sums.map((v, i) => (activeByMonth[i].size ? v / activeByMonth[i].size : 0));
+        // Average per measured day (or week…) in each month, logged or not.
+        values = sums.map((v, i) => (counts[i] > 0 ? v / counts[i] : 0));
         goal = isCheck(t) ? 0 : (t.target > 0 ? t.target : 0);
-        caption = `AVERAGE PER ACTIVE ${per.toUpperCase()} EACH MONTH`;
+        caption = `AVERAGE PER MEASURED ${per.toUpperCase()} EACH MONTH`;
       } else {
         goal = !isCheck(t) && t.target > 0 ? counts.map(c => (c > 0 ? t.target * c : null)) : 0;
         caption = 'TOTAL EACH MONTH';
@@ -1566,17 +1574,25 @@ function activePeriodKey(reset, ts) {
   }
 }
 
-function periodsCounted(t, year, month) {
-  // Count from the 1st of the month, or from the day the goal was created if that's later.
-  // Start counting when the goal was created, or earlier if entries were added for earlier days.
-  let created = t.createdAt ? startOfDay(new Date(t.createdAt)).getTime() : 0;
-  for (const e of state.entries) if (e.tallyId === t.id && e.ts < created) created = startOfDay(new Date(e.ts)).getTime();
-  const first = new Date(Math.max(new Date(year, month, 1).getTime(), created));
-  const end = Math.min(new Date(year, month + 1, 1).getTime(), addDays(startOfDay(new Date()), 1).getTime());
+// The day a goal started counting: when it was created, or earlier if entries were added for earlier days.
+function goalStartDay(t) {
+  let start = t.createdAt ? startOfDay(new Date(t.createdAt)).getTime() : Infinity;
+  for (const e of state.entries) if (e.tallyId === t.id && e.ts < start) start = startOfDay(new Date(e.ts)).getTime();
+  return start === Infinity ? startOfDay(new Date()).getTime() : start;
+}
+
+// Measured days between two times: the goal's selected weekdays, from its start day, up to today.
+function measuredDays(t, fromMs, toMs) {
+  const end = Math.min(toMs, addDays(startOfDay(new Date()), 1).getTime());
   let days = 0;
-  for (let d = new Date(first); d.getTime() < end; d = addDays(d, 1)) {
+  for (let d = new Date(Math.max(fromMs, goalStartDay(t))); d.getTime() < end; d = addDays(d, 1)) {
     if (!t.days || t.days.includes(d.getDay())) days++;
   }
+  return days;
+}
+
+function periodsCounted(t, year, month) {
+  const days = measuredDays(t, new Date(year, month, 1).getTime(), new Date(year, month + 1, 1).getTime());
   switch (t.reset) {
     case 'minute': return days * 1440;
     case 'hour': return days * 24;
@@ -1590,27 +1606,32 @@ function periodsCounted(t, year, month) {
 // Top of the y-axis: the goal itself (30 for "30 minutes a day"), or the biggest value if one went past it.
 function chartScale(t, sums, goal) {
   const top = Math.max(0, ...sums);
-  if (Array.isArray(goal)) return Math.max(top, ...goal.filter(g => g != null), 0) || niceMax(top);
+  if (Array.isArray(goal)) return Math.max(top, ...goal.filter(g => g != null), 0) || niceThirds(top);
   if (isCheck(t)) return Math.max(1, top);
   if (goal) return Math.max(goal, top);
-  return niceMax(top);
+  return niceThirds(top);
 }
 
-// Y-axis labels: the top value, plus the goal's own level when a day went past it (else the midpoint).
-function yAxisLabels(max, goal, withZero) {
-  const labels = [el('span', { style: 'top:0' }, fmt(Math.round(max * 100) / 100))];
-  if (Array.isArray(goal)) goal = 0;
-  if (goal && goal < max) {
-    if (goal / max < 0.88 && goal / max > 0.1) labels.push(el('span', { class: 'y-goal', style: `top:${100 - (goal / max) * 100}%` }, fmt(goal)));
-  } else {
-    labels.push(el('span', { style: 'top:50%' }, fmt(max / 2)));
-  }
-  if (withZero) labels.push(el('span', { style: 'top:100%' }, '0'));
-  return labels;
+// A tidy top value that splits into thirds (3, 6, 15, 30, 60…), used when there's no goal to scale to.
+function niceThirds(v) {
+  if (!(v > 0)) return 3;
+  for (let k = -2; k < 9; k++) for (const m of [1, 2, 5]) { const step = m * Math.pow(10, k); if (step * 3 >= v) return step * 3; }
+  return v;
+}
+const axisNum = v => fmt(Math.round(v * 10) / 10);
+const axisRows = max => (max <= 1 ? 1 : 3);
+
+// Y-axis labels: 0, ⅓, ⅔ and the top — or just 0 and the top when the top is 1 or less.
+function yAxisLabels(max) {
+  const rows = axisRows(max);
+  return Array.from({ length: rows + 1 }, (_, i) => {
+    const frac = i / rows; // 0 = top
+    return el('span', { style: `top:${frac * 100}%` }, axisNum(max * (1 - frac)));
+  });
 }
 
 function barChart(sums, labels, currentIdx, onPick, max, goal, caption) {
-  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' }, yAxisLabels(max, goal, false));
+  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' }, yAxisLabels(max));
   const bars = el('div', { class: 'bars' },
     goal ? el('div', { class: 'bar-goal', style: `bottom:${(goal / max) * 100}%`, 'aria-hidden': 'true' }) : null,
     sums.map((v, i) => el('div', { class: `bar-col${i === currentIdx ? ' current' : ''}`, onclick: () => onPick(i) },
@@ -1635,7 +1656,8 @@ function lineChart(t, sums, labels, currentIdx, onPick, max, goal, caption) {
   const xOf = i => (span ? (i / span) * 100 : 50);
 
   const colw = range === 'month' ? (7 / span) * 100 : range === 'day' ? (6 / span) * 100 : 100 / span;
-  const plot = el('div', { class: 'scatter', style: `--colw:${colw}%` });
+  // background rows line up with the y-axis numbers
+  const plot = el('div', { class: 'scatter', style: `--colw:${colw}%;--rows:${axisRows(max)}` });
   const points = sums.slice(0, last + 1).map((v, i) => ({ x: xOf(i), y: yOf(v), v, i }));
 
   const NS = 'http://www.w3.org/2000/svg';
@@ -1671,7 +1693,7 @@ function lineChart(t, sums, labels, currentIdx, onPick, max, goal, caption) {
     plot.append(el('button', { type: 'button', class: 'pt', style: `left:${p.x}%;top:${p.y}%`, 'aria-label': amountText(t, p.v), onclick: () => onPick(p.i) }));
   }
 
-  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' }, yAxisLabels(max, goal, false));
+  const yAxis = el('div', { class: 'y-axis', style: 'height:var(--chart-h)' }, yAxisLabels(max));
   const xl = el('div', { class: 'x-labels line-x' },
     labels.map((l, i) => (l ? el('span', { style: `left:${xOf(i)}%` }, l) : null)));
 

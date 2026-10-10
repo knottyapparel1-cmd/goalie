@@ -1077,7 +1077,8 @@ button {
 /* ---------- Compact stats: a whole card fits on screen ---------- */
 #screen-stats {
   /* chart height follows the screen so header + one full card always fit */
-  --chart-h: clamp(72px, calc(100vh - 660px), 150px);
+  /* two whole goal cards fit on screen: (screen − header/footer)/2 − card padding/titles */
+  --chart-h: clamp(56px, calc((100vh - 361px) / 2 - 121px), 150px);
 }
 #screen-stats .modal-head { padding-top: 22px; }
 .modal-head .stats-title { font-size: 24px; }
@@ -1351,3 +1352,12 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
 
 /* ---------- Check-off goals: ✗ and ✓ buttons ---------- */
 .card-foot.is-check .step-btn .check-mark { width: 16px; height: 16px; stroke-width: 3; }
+
+/* ---------- Stats: line-graph background rows follow the y-axis numbers ---------- */
+.scatter { background-size: 100% calc(100% / var(--rows, 3)), var(--colw, 14.285%) 100%; border-top-color: rgba(0,0,0,.08); }
+
+/* ---------- Stats: period filter on top, DAY/WEEK/MONTH/YEAR above the chart icons ---------- */
+#screen-stats > .filter-bar#stats-filter { margin: 4px var(--gutter) 10px; }
+#screen-stats > #range-tabs { padding: 0 var(--gutter); margin: 4px 0 6px; }
+/* with the group chips showing there's one more row above the cards; keep two cards on screen */
+#screen-stats:has(#stats-group-chips:not(.hidden)) { --chart-h: clamp(48px, calc((100vh - 405px) / 2 - 121px), 150px); }
