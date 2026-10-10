@@ -40,6 +40,9 @@
         <span class="edit-done">DONE</span>
       </button>
       <button class="edit-cancel hidden" id="btn-edit-cancel" aria-label="Cancel edits">CANCEL</button>
+      <button class="icon-btn header-settings" id="btn-settings" aria-label="Settings">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="#6b7280"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5L19.4 13zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+      </button>
       <h1>GOALIE</h1>
       <div class="header-actions">
         <button class="icon-btn muted" id="btn-help" aria-label="Help">?</button>
@@ -62,8 +65,8 @@
       <button type="button" role="tab" data-v="year">YEARLY</button>
     </div>
     <nav class="bottom-bar">
-      <button class="icon-btn" id="btn-settings" aria-label="Settings">
-        <svg viewBox="0 0 24 24" width="30" height="30" fill="#c4c8cf"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5L19.4 13zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+      <button class="icon-btn" id="btn-todo" aria-label="To-do list">
+        <svg viewBox="0 0 24 24" width="30" height="30"><g fill="#c4c8cf"><circle cx="4.5" cy="6" r="1.8"/><circle cx="4.5" cy="12" r="1.8"/><circle cx="4.5" cy="18" r="1.8"/></g><g stroke="#c4c8cf" stroke-width="2.2" stroke-linecap="round"><path d="M9.5 6H21M9.5 12H21M9.5 18H21"/></g></svg>
       </button>
       <button class="icon-btn" id="btn-add" aria-label="Create goal">
         <svg viewBox="0 0 24 24" width="34" height="34"><path d="M12 4v16M4 12h16" stroke="#b3b8c0" stroke-width="2.6" stroke-linecap="round"/></svg>
@@ -113,6 +116,10 @@
         <button type="button" data-v="5">FRI</button>
         <button type="button" data-v="6">SAT</button>
       </div>
+      <div class="due-row">
+        <span class="due-label">This goal will be accomplished by:</span>
+        <button type="button" class="due-btn" id="btn-due">Custom Date</button>
+      </div>
 
       <label class="field-label" for="f-goal">GOAL</label>
       <div class="goal-row" id="goal-amount-row">
@@ -127,6 +134,7 @@
         <button type="button" data-v="check" aria-label="Check or X">✓/✗</button>
         <button type="button" data-v="custom">CUSTOM</button>
       </div>
+      <input id="f-unit" class="text-input full hidden unit-input" type="text" maxlength="24" placeholder="What are you measuring? e.g. cigarettes, pages">
       <div id="per-row" class="per-row">
         <span class="per-label">PER</span>
         <div class="seg pills units" data-field="per">
@@ -138,7 +146,6 @@
           <button type="button" data-v="year">YEAR</button>
         </div>
       </div>
-      <input id="f-unit" class="text-input full hidden unit-input" type="text" maxlength="24" placeholder="What are you measuring? e.g. cigarettes, pages">
       <p id="goal-desc" class="goal-desc"></p>
 
       <div class="field-label">GROUP</div>
