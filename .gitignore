@@ -6,3 +6,6 @@
 # Local tooling
 .claude/
 node_modules/
+
+# exported data backups (personal data)
+goalie-backup-*.json
