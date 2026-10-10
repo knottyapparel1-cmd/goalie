@@ -78,6 +78,8 @@ const DEFAULT_STATE = () => ({
   tallies: [],
   entries: [],
   trash: [], // recently deleted goals: { id, tally, entries, index, deletedAt }
+  todos: [], // { id, title, section, priority (bool), quadrant (1-4), done, createdAt, doneAt }
+  todoSections: [], // section names, in order
   settings: { layout: 'grid', weekStart: 0, reminderFired: {}, theme: 'auto' },
 });
 
@@ -117,6 +119,8 @@ function load() {
       tallies: Array.isArray(data.tallies) ? data.tallies : [],
       entries: Array.isArray(data.entries) ? data.entries : [],
       trash: Array.isArray(data.trash) ? data.trash : [],
+      todos: Array.isArray(data.todos) ? data.todos : [],
+      todoSections: Array.isArray(data.todoSections) ? data.todoSections : [],
       settings: { ...base.settings, ...(data.settings || {}) },
     };
   } catch (e) {
@@ -958,6 +962,11 @@ $('#btn-help').addEventListener('click', () => {
 });
 
 $('#btn-add').addEventListener('click', () => { editMode = false; openForm(null); });
+$('#btn-todo').addEventListener('click', () => {
+  if (editMode) setEditMode(false);
+  renderTodos();
+  openScreen('todo');
+});
 $('#btn-stats').addEventListener('click', () => {
   if (editMode) setEditMode(false); statsState.offset = 0; renderStats(); openScreen('stats'); });
 $('#btn-settings').addEventListener('click', () => {
@@ -1899,7 +1908,7 @@ $('#import-file').addEventListener('change', async e => {
       el('button', {
         class: 'sheet-btn primary',
         onclick: () => {
-          state = { tallies: data.tallies, entries: data.entries, trash: Array.isArray(data.trash) ? data.trash : [], settings: { ...DEFAULT_STATE().settings, ...(data.settings || {}) } };
+          state = { tallies: data.tallies, entries: data.entries, trash: Array.isArray(data.trash) ? data.trash : [], todos: Array.isArray(data.todos) ? data.todos : [], todoSections: Array.isArray(data.todoSections) ? data.todoSections : [], settings: { ...DEFAULT_STATE().settings, ...(data.settings || {}) } };
           save(); renderToday(); renderSettings(); closeSheet(); toast('Backup imported');
         },
       }, 'Import'),
@@ -1992,6 +2001,208 @@ async function checkReminders() {
     }
   }
 }
+
+/* =========================================================
+   To-Do list (sections + Eisenhower priority)
+   ========================================================= */
+// Quadrant → priority list: Q1 High, Q2 Medium, Q3 Low, Q4 No priority.
+const QUADRANTS = {
+  1: { title: 'Q1', desc: 'Important & urgent', priority: 'High priority', key: 'high' },
+  2: { title: 'Q2', desc: 'Important, not urgent', priority: 'Medium priority', key: 'medium' },
+  3: { title: 'Q3', desc: 'Urgent, not important', priority: 'Low priority', key: 'low' },
+  4: { title: 'Q4', desc: 'Not urgent, not important', priority: 'No priority', key: 'none' },
+};
+let todoView = 'lists';
+
+function todoSectionNames() {
+  const names = [...state.todoSections];
+  for (const t of state.todos) if (t.section && !names.includes(t.section)) names.push(t.section);
+  return names;
+}
+
+function renderTodos() {
+  $$('#todo-view button').forEach(b => b.classList.toggle('on', b.dataset.v === todoView));
+  const box = $('#todo-list');
+  box.innerHTML = '';
+  if (todoView === 'priority') return renderPriorityView(box);
+
+  const sections = todoSectionNames();
+  const loose = state.todos.filter(t => !t.section);
+  if (!sections.length && !loose.length) {
+    box.append(el('div', { class: 'empty' }, el('strong', {}, 'Nothing to do yet'), 'Tap + NEW TO-DO, or make a section like “Weekly Chores”.'));
+  }
+  for (const name of sections) box.append(todoSection(name, state.todos.filter(t => t.section === name)));
+  if (loose.length) box.append(todoSection('', loose));
+  box.append(el('button', { type: 'button', class: 'todo-new-section', onclick: newSectionSheet }, '+ New section'));
+}
+
+function todoSection(name, items) {
+  const open = items.filter(t => !t.done).length;
+  return el('div', { class: 'todo-section' },
+    el('div', { class: 'todo-section-head' },
+      el('button', { type: 'button', class: 'todo-section-name', onclick: () => name && sectionMenu(name) },
+        name ? name.toUpperCase() : 'NO SECTION', el('span', { class: 'group-count' }, String(open))),
+      el('button', { type: 'button', class: 'todo-section-add', 'aria-label': `Add to ${name || 'no section'}`, onclick: () => todoSheet(null, name) }, '+ Add')),
+    items.length ? sortTodos(items).map(t => todoRow(t, false)) : el('p', { class: 'todo-empty' }, 'No to-dos here yet.'));
+}
+
+// open items first (newest first), then finished ones
+function sortTodos(items) {
+  return [...items].sort((a, b) => (a.done - b.done) || (b.createdAt - a.createdAt));
+}
+
+function todoRow(t, showSection) {
+  const q = t.priority && QUADRANTS[t.quadrant];
+  return el('div', { class: `todo-row${t.done ? ' done' : ''}` },
+    el('button', {
+      type: 'button',
+      class: 'todo-check',
+      'aria-label': t.done ? `Mark ${t.title} not done` : `Mark ${t.title} done`,
+      onclick: () => { t.done = !t.done; t.doneAt = t.done ? Date.now() : null; save(); renderTodos(); },
+    }, t.done ? checkMark(true) : null),
+    el('button', { type: 'button', class: 'todo-main', onclick: () => todoSheet(t) },
+      el('span', { class: 'todo-title' }, t.title),
+      el('span', { class: 'todo-meta' },
+        q ? el('span', { class: `todo-tag p-${q.key}` }, `${q.title} · ${q.key.toUpperCase()}`) : null,
+        showSection && t.section ? el('span', { class: 'todo-sec' }, t.section) : null)));
+}
+
+function renderPriorityView(box) {
+  const withPriority = state.todos.filter(t => t.priority && QUADRANTS[t.quadrant]);
+  if (!withPriority.length) {
+    box.append(el('div', { class: 'empty' }, el('strong', {}, 'No prioritized to-dos'), 'Turn on “Use priority list” when you add a to-do.'));
+    return;
+  }
+  for (const n of [1, 2, 3, 4]) {
+    const q = QUADRANTS[n];
+    const items = withPriority.filter(t => t.quadrant === n);
+    box.append(el('div', { class: `todo-section prio p-${q.key}` },
+      el('div', { class: 'todo-section-head' },
+        el('div', { class: 'todo-section-name' }, q.priority.toUpperCase(), el('span', { class: 'group-count' }, String(items.filter(t => !t.done).length))),
+        el('span', { class: 'todo-prio-q' }, `${q.title} · ${q.desc}`)),
+      items.length ? sortTodos(items).map(t => todoRow(t, true)) : el('p', { class: 'todo-empty' }, 'Nothing here.')));
+  }
+}
+
+// New / edit a to-do
+function todoSheet(t, presetSection) {
+  const draft = t ? { ...t } : { title: '', section: presetSection || '', priority: true, quadrant: null };
+  const draw = () => {
+    const title = el('input', { class: 'text-input', type: 'text', maxlength: 80, placeholder: 'e.g. Go to the grocery store', value: draft.title });
+    title.addEventListener('input', () => { draft.title = title.value; });
+    const sections = todoSectionNames();
+    const newSec = el('input', { class: 'text-input', type: 'text', maxlength: 30, placeholder: 'Or type a new section name' });
+    const error = el('p', { class: 'form-error hidden' });
+
+    const save_ = () => {
+      draft.title = title.value.trim();
+      if (newSec.value.trim()) draft.section = newSec.value.trim();
+      if (!draft.title) { error.textContent = 'Give the to-do a name.'; error.classList.remove('hidden'); return; }
+      if (draft.priority && !QUADRANTS[draft.quadrant]) { error.textContent = 'Pick a quadrant, or turn off the priority list.'; error.classList.remove('hidden'); return; }
+      if (draft.section && !state.todoSections.includes(draft.section)) state.todoSections.push(draft.section);
+      if (t) Object.assign(t, draft, { quadrant: draft.priority ? draft.quadrant : null });
+      else state.todos.push({ id: uid(), title: draft.title, section: draft.section, priority: draft.priority, quadrant: draft.priority ? draft.quadrant : null, done: false, createdAt: Date.now(), doneAt: null });
+      save(); renderTodos(); closeSheet();
+      toast(t ? 'To-do updated' : 'To-do added');
+    };
+
+    openSheet(
+      el('h3', {}, t ? 'Edit to-do' : 'New to-do'),
+      el('div', { class: 'sheet-label' }, 'TO-DO', title),
+      el('div', { class: 'sheet-label' }, 'SECTION'),
+      el('div', { class: 'chips todo-sec-chips' },
+        el('button', { type: 'button', class: `chip${!draft.section ? ' on' : ''}`, onclick: () => { draft.title = title.value; draft.section = ''; draw(); } }, 'None'),
+        sections.map(s => el('button', { type: 'button', class: `chip${draft.section === s ? ' on' : ''}`, onclick: () => { draft.title = title.value; draft.section = s; draw(); } }, s))),
+      newSec,
+      el('div', { class: 'sheet-label' }, 'USE PRIORITY LIST'),
+      el('div', { class: 'seg pills todo-prio-toggle' },
+        el('button', { type: 'button', class: draft.priority ? 'on' : '', onclick: () => { draft.title = title.value; draft.priority = true; draw(); } }, 'YES'),
+        el('button', { type: 'button', class: draft.priority ? '' : 'on', onclick: () => { draft.title = title.value; draft.priority = false; draw(); } }, 'NO')),
+      draft.priority ? el('div', { class: 'todo-reflect' },
+        el('div', { class: 'todo-reflect-title' }, 'Ask yourself'),
+        el('ol', {},
+          el('li', {}, 'Does this task genuinely matter to my goals or responsibilities?'),
+          el('li', {}, 'Does it genuinely need to be done soon?'))) : null,
+      draft.priority ? el('div', { class: 'quadrants' },
+        [1, 2, 3, 4].map(n => {
+          const q = QUADRANTS[n];
+          return el('button', {
+            type: 'button',
+            class: `quadrant p-${q.key}${draft.quadrant === n ? ' on' : ''}`,
+            onclick: () => { draft.title = title.value; draft.quadrant = n; draw(); },
+          }, el('strong', {}, q.title), el('span', {}, q.desc), el('em', {}, '→ ' + q.priority));
+        })) : null,
+      error,
+      el('button', { class: 'sheet-btn primary', onclick: save_ }, t ? 'Save' : 'Add to-do'),
+      t ? el('button', {
+        class: 'sheet-btn danger',
+        onclick: () => {
+          const i = state.todos.indexOf(t);
+          state.todos.splice(i, 1); save(); renderTodos(); closeSheet();
+          toast('To-do deleted', () => { state.todos.splice(i, 0, t); save(); renderTodos(); });
+        },
+      }, 'Delete to-do') : null,
+      el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
+    );
+    if (!t && !draft.title) setTimeout(() => title.focus(), 250);
+  };
+  draw();
+}
+
+function newSectionSheet() {
+  const input = el('input', { class: 'text-input', type: 'text', maxlength: 30, placeholder: 'e.g. Weekly Chores' });
+  const add = () => {
+    const name = input.value.trim();
+    if (!name) return;
+    if (!state.todoSections.includes(name)) state.todoSections.push(name);
+    save(); renderTodos(); closeSheet();
+  };
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+  openSheet(el('h3', {}, 'New section'), input, el('button', { class: 'sheet-btn primary', onclick: add }, 'Add section'), el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'));
+  setTimeout(() => input.focus(), 250);
+}
+
+function sectionMenu(name) {
+  const input = el('input', { class: 'text-input', type: 'text', maxlength: 30, value: name });
+  openSheet(
+    el('h3', {}, name),
+    el('div', { class: 'sheet-label' }, 'RENAME', input),
+    el('button', {
+      class: 'sheet-btn primary',
+      onclick: () => {
+        const next = input.value.trim();
+        if (next && next !== name) {
+          state.todoSections = state.todoSections.map(s => (s === name ? next : s)).filter((s, i, a) => a.indexOf(s) === i);
+          state.todos.forEach(t => { if (t.section === name) t.section = next; });
+          save(); renderTodos();
+        }
+        closeSheet();
+      },
+    }, 'Save name'),
+    el('button', {
+      class: 'sheet-btn danger',
+      onclick: () => {
+        const items = state.todos.filter(t => t.section === name);
+        const idx = state.todoSections.indexOf(name);
+        state.todoSections = state.todoSections.filter(s => s !== name);
+        items.forEach(t => { t.section = ''; });
+        save(); renderTodos(); closeSheet();
+        toast(`Removed section ${name}`, () => {
+          state.todoSections.splice(Math.max(0, idx), 0, name);
+          items.forEach(t => { t.section = name; });
+          save(); renderTodos();
+        });
+      },
+    }, 'Remove section (keeps its to-dos)'),
+    el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
+  );
+}
+
+$('#todo-view').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  todoView = b.dataset.v; renderTodos();
+});
+$('#btn-todo-add').addEventListener('click', () => todoSheet(null));
 
 /* =========================================================
    Sheet + toast
