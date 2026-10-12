@@ -1435,3 +1435,61 @@ html[data-theme="dark"] .p-low .todo-tag, html[data-theme="dark"] .todo-tag.p-lo
 .trash-dot.todo-dot svg { width: 12px; height: 12px; }
 .todo-trash-name { white-space: normal; overflow-wrap: anywhere; }
 .sheet .trash-list { margin: 4px 0 12px; }
+
+/* ---------- Create form: card preview is the real card, shrunk ---------- */
+#color-preview { position: relative; overflow: hidden; pointer-events: none; }
+.preview-scale { transform-origin: top left; }
+.preview-scale .card { animation: none !important; }
+
+/* ---------- Create form: PER → BY CUSTOM DATE, ADD [x] PER TAP ---------- */
+.per-row .seg .per-date { grid-column: 1 / -1; }
+.seg .seg-opt {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-width: 76px; height: 48px; padding: 0 16px; border-radius: 10px;
+  font-size: 12px; font-weight: 700; letter-spacing: .05em; color: var(--navy);
+  cursor: pointer; transition: background .15s;
+}
+.seg .seg-opt.on { background: var(--soft); }
+.per-tap-input {
+  width: 64px; height: 34px; padding: 0 8px; border-radius: 8px;
+  border: 1.5px solid var(--line); background: var(--surface, #fff); color: var(--navy);
+  font: inherit; font-size: 16px; text-align: center;
+}
+
+/* ---------- Date wheels (month / day / year) ---------- */
+.wheels {
+  position: relative; display: grid; grid-template-columns: 1.1fr .8fr 1fr; gap: 4px;
+  height: 180px; margin: 8px 0 12px; border-radius: 14px; background: var(--fill-soft, rgba(0,0,0,.03));
+  -webkit-mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent);
+          mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent);
+}
+.wheels::before {
+  content: ''; position: absolute; left: 6px; right: 6px; top: 72px; height: 36px;
+  border-radius: 10px; background: var(--soft); pointer-events: none;
+}
+.wheel {
+  position: relative; height: 180px; overflow-y: scroll; scroll-snap-type: y mandatory;
+  overscroll-behavior: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.wheel::-webkit-scrollbar { display: none; }
+.wheel-pad { height: 72px; }
+.wheel-item {
+  height: 36px; line-height: 36px; text-align: center; scroll-snap-align: center;
+  font-size: 18px; font-weight: 600; color: var(--muted); cursor: pointer;
+}
+.wheel-item.on { color: var(--navy); font-weight: 800; }
+.wheel-item.off { opacity: .3; }
+.sheet-label .wheels { margin-top: 6px; font-weight: 400; letter-spacing: 0; }
+.log-date { margin: -6px 0 2px; font-size: 14px; font-weight: 700; color: var(--muted); }
+
+/* ---------- Hold menu: undo / redo beside the goal name ---------- */
+.menu-head { display: flex; align-items: center; gap: 2px; }
+.menu-head h3 { flex: 1; min-width: 0; margin-right: 6px; }
+.hist-arrow { color: var(--accent); min-width: 40px; }
+.hist-arrow:disabled { color: var(--line); }
+
+/* ---------- Edit mode: drag group chips to reorder groups ---------- */
+.group-chips.editing .group-chip[data-group] { touch-action: none; cursor: grab; animation: jiggle .28s ease-in-out infinite alternate; }
+.group-chips.editing .group-chip[data-group]:nth-child(even) { animation-direction: alternate-reverse; }
+.group-chip.dragging { animation: none !important; transform: scale(1.08); box-shadow: 0 6px 16px rgba(0,0,0,.18); z-index: 2; }
+@media (prefers-reduced-motion: reduce) { .group-chips.editing .group-chip { animation: none !important; } }

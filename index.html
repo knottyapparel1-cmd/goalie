@@ -106,23 +106,6 @@
         <button type="button" data-v="decrease">DECREASE</button>
       </div>
 
-      <div id="days-section">
-      <div class="field-label">WHICH DAYS WILL BE MEASURED?</div>
-      <div class="days-summary" id="days-summary" aria-live="polite"></div>
-      <div class="days multi" data-field="days">
-        <button type="button" data-v="0">SUN</button>
-        <button type="button" data-v="1">MON</button>
-        <button type="button" data-v="2">TUE</button>
-        <button type="button" data-v="3">WED</button>
-        <button type="button" data-v="4">THU</button>
-        <button type="button" data-v="5">FRI</button>
-        <button type="button" data-v="6">SAT</button>
-      </div>
-      </div>
-      <div class="due-row">
-        <span class="due-label">This goal will be accomplished by:</span>
-        <button type="button" class="due-btn" id="btn-due">Custom Date</button>
-      </div>
 
       <label class="field-label" for="f-goal">GOAL</label>
       <div class="goal-row" id="goal-amount-row">
@@ -147,23 +130,36 @@
           <button type="button" data-v="week">WEEK</button>
           <button type="button" data-v="month">MONTH</button>
           <button type="button" data-v="year">YEAR</button>
+          <button type="button" data-v="date" id="per-date" class="per-date">BY CUSTOM DATE</button>
         </div>
       </div>
       <p id="goal-desc" class="goal-desc"></p>
 
-      <div class="field-label">GROUP</div>
-      <button type="button" class="link-row" id="btn-group"><span id="group-value">NONE</span><span class="chev">&rsaquo;</span></button>
+      <div id="days-section">
+      <div class="field-label">WHICH DAYS WILL BE MEASURED?</div>
+      <div class="days-summary" id="days-summary" aria-live="polite"></div>
+      <div class="days multi" data-field="days">
+        <button type="button" data-v="0">SUN</button>
+        <button type="button" data-v="1">MON</button>
+        <button type="button" data-v="2">TUE</button>
+        <button type="button" data-v="3">WED</button>
+        <button type="button" data-v="4">THU</button>
+        <button type="button" data-v="5">FRI</button>
+        <button type="button" data-v="6">SAT</button>
+      </div>
+      </div>
+
 
       <div id="amount-section">
-      <label class="field-label" for="f-default">AMOUNT PER TAP</label>
-      <input id="f-default" class="text-input full" type="number" inputmode="decimal" step="any" value="1">
-
       <div class="field-label">WHEN YOU TAP +</div>
       <div class="seg pills" data-field="logMode" id="logmode-seg">
-        <button type="button" data-v="default">ADD THE USUAL AMOUNT</button>
+        <div role="button" tabindex="0" class="seg-opt per-tap" data-v="default">ADD <input id="f-default" class="per-tap-input" type="number" inputmode="decimal" step="any" value="1" aria-label="Amount per tap"> PER TAP</div>
         <button type="button" data-v="custom">ALLOW ME TO ENTER IT MANUALLY</button>
       </div>
       </div>
+
+      <div class="field-label">GROUP</div>
+      <button type="button" class="link-row" id="btn-group"><span id="group-value">NONE</span><span class="chev">&rsaquo;</span></button>
 
       <div class="field-label">REMINDERS</div>
       <button type="button" class="link-row" id="btn-reminder"><span id="reminder-value">NONE</span><span class="chev">&rsaquo;</span></button>

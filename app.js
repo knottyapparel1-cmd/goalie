@@ -164,6 +164,7 @@ function startOfWeek(d) {
   return addDays(x, -diff);
 }
 function daysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+const sameDay = (a, b) => startOfDay(a).getTime() === startOfDay(b).getTime();
 function dayKey(d) { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth() + 1}-${x.getDate()}`; }
 
 function periodStart(reset, now = new Date()) {
@@ -218,20 +219,47 @@ function hasActivityToday(id) {
   return state.entries.some(e => e.tallyId === id && e.ts >= from);
 }
 
-function logEntry(t, value) {
+// ts: when it happened (now by default; the custom amount sheet can pick an earlier day).
+function logEntry(t, value, ts = Date.now()) {
   if (isCheck(t)) {
-    if (currentCount(t) >= 1) { toast(`${t.name} is already checked off`); return; }
+    if (ts >= periodStart(t.reset).getTime() && currentCount(t) >= 1) { toast(`${t.name} is already checked off`); return; }
     value = 1;
   }
-  const entry = { id: uid(), tallyId: t.id, ts: Date.now(), value: Number(value) };
-  state.entries.push(entry);
+  entryChange(t.id, () => state.entries.push({ id: uid(), tallyId: t.id, ts, value: Number(value) }));
   save();
   renderToday(t.id);
-  toast(isCheck(t) ? `${t.name} ✓` : `${t.name} ${value >= 0 ? '+' : '−'}${num(t, Math.abs(value))}`, () => {
-    state.entries = state.entries.filter(e => e.id !== entry.id);
-    save();
-    renderToday();
-  });
+  toast(isCheck(t) ? `${t.name} ✓` : `${t.name} ${value >= 0 ? '+' : '−'}${num(t, Math.abs(value))}`, () => entryUndo(t.id));
+}
+
+// Undo / redo per goal (the arrows beside the goal name when you hold a card): each change to a
+// goal's entries saves a copy of that goal's entries first.
+const entryHistory = {};
+const historyOf = id => (entryHistory[id] ??= { back: [], forward: [] });
+const goalEntriesCopy = id => JSON.stringify(state.entries.filter(e => e.tallyId === id));
+function entryChange(id, fn) {
+  const h = historyOf(id);
+  h.back.push(goalEntriesCopy(id));
+  if (h.back.length > 100) h.back.shift();
+  h.forward = [];
+  fn();
+}
+function putGoalEntries(id, json) {
+  state.entries = state.entries.filter(e => e.tallyId !== id).concat(JSON.parse(json));
+  save(); refreshAll();
+}
+function entryUndo(id) {
+  const h = historyOf(id);
+  if (!h.back.length) return false;
+  h.forward.push(goalEntriesCopy(id));
+  putGoalEntries(id, h.back.pop());
+  return true;
+}
+function entryRedo(id) {
+  const h = historyOf(id);
+  if (!h.forward.length) return false;
+  h.back.push(goalEntriesCopy(id));
+  putGoalEntries(id, h.forward.pop());
+  return true;
 }
 
 /* =========================================================
@@ -273,7 +301,7 @@ let dragActive = false; // a card is being dragged; hold off re-rendering until 
 
 // Snapshot taken when edit mode starts, so CANCEL can undo everything done since.
 let editSnapshot = null;
-const EDIT_SETTINGS = ['groupFilter', 'collapsedGroups', 'filter'];
+const EDIT_SETTINGS = ['groupFilter', 'collapsedGroups', 'filter', 'groupOrder'];
 
 function setEditMode(on) {
   const wasEditing = editMode;
@@ -332,7 +360,7 @@ function drawToday(bumpId) {
   }
 
   // Group chips: All · each group · No group
-  const groupNames = [...new Set(state.tallies.flatMap(groupsOf))];
+  const groupNames = allGroupNames();
   let groupFilter = state.settings.groupFilter || '';
   if (groupFilter && groupFilter !== NO_GROUP && !groupNames.includes(groupFilter)) groupFilter = state.settings.groupFilter = '';
   renderGroupChips(groupNames, groupFilter);
@@ -356,7 +384,11 @@ function drawToday(bumpId) {
       groups.get(g).push(t);
     }
   }
-  if (groups.has('')) { const none = groups.get(''); groups.delete(''); groups.set('', none); }
+  // Put the sections in the group order (set by dragging the chips in edit mode); no group last.
+  const ordered = new Map();
+  for (const g of [...groupNames, '']) if (groups.has(g)) ordered.set(g, groups.get(g));
+  for (const [g, list] of groups) if (!ordered.has(g)) ordered.set(g, list);
+  groups.clear(); for (const [g, list] of ordered) groups.set(g, list);
 
   // Section headings when there are groups and the chips aren't already narrowing to one
   // (always in edit mode, so a group's delete button is reachable).
@@ -391,6 +423,55 @@ function drawToday(bumpId) {
 
 const NO_GROUP = '__none__';
 
+// Every group name, in the user's chosen order (new groups go at the end in order of first appearance).
+function allGroupNames() {
+  const names = [...new Set(state.tallies.flatMap(groupsOf))];
+  const order = state.settings.groupOrder || [];
+  const rank = new Map(names.map((g, i) => [g, order.includes(g) ? order.indexOf(g) : order.length + i]));
+  return names.sort((a, b) => rank.get(a) - rank.get(b));
+}
+
+// Edit mode: drag a group chip left or right to reorder the groups (their cards move with them).
+let chipDragAt = 0;
+function attachChipDrag(chip, box) {
+  chip.addEventListener('pointerdown', e => {
+    if (!editMode) return;
+    const startX = e.clientX;
+    let moved = false;
+    chip.setPointerCapture(e.pointerId);
+    const move = ev => {
+      if (!moved && Math.abs(ev.clientX - startX) < 6) return;
+      moved = true;
+      chip.classList.add('dragging');
+      const target = [...box.querySelectorAll('.group-chip[data-group]')].find(c => {
+        if (c === chip) return false;
+        const r = c.getBoundingClientRect();
+        return ev.clientX > r.left && ev.clientX < r.right;
+      });
+      if (target) {
+        const r = target.getBoundingClientRect();
+        if (ev.clientX < r.left + r.width / 2) target.before(chip); else target.after(chip);
+      }
+      const br = box.getBoundingClientRect();
+      if (ev.clientX < br.left + 30) box.scrollLeft -= 8;
+      else if (ev.clientX > br.right - 30) box.scrollLeft += 8;
+    };
+    const end = () => {
+      chip.removeEventListener('pointermove', move);
+      chip.removeEventListener('pointerup', end);
+      chip.removeEventListener('pointercancel', end);
+      if (!moved) return;
+      chipDragAt = Date.now();
+      state.settings.groupOrder = [...box.querySelectorAll('.group-chip[data-group]')].map(c => c.dataset.group);
+      save();
+      renderToday();
+    };
+    chip.addEventListener('pointermove', move);
+    chip.addEventListener('pointerup', end);
+    chip.addEventListener('pointercancel', end);
+  });
+}
+
 function matchesGroup(t, groupFilter) {
   if (!groupFilter) return true;
   if (groupFilter === NO_GROUP) return groupsOf(t).length === 0;
@@ -409,10 +490,17 @@ function renderGroupChips(groupNames, active, box = $('#group-chips'), onPick = 
     role: 'tab',
     class: `group-chip${value === active ? ' on' : ''}`,
     'aria-selected': String(value === active),
-    onclick: () => onPick(value),
+    'data-group': value && value !== NO_GROUP ? value : null,
+    onclick: () => { if (Date.now() - chipDragAt > 400) onPick(value); },
   }, label, el('span', { class: 'chip-count' }, String(count(value))));
+  const reorderable = editMode && box.id === 'group-chips';
+  box.classList.toggle('editing', reorderable);
   box.append(chip('', 'All'));
-  groupNames.forEach(g => box.append(chip(g, g)));
+  groupNames.forEach(g => {
+    const c = chip(g, g);
+    if (reorderable) attachChipDrag(c, box);
+    box.append(c);
+  });
   if (state.tallies.some(t => !groupsOf(t).length)) box.append(chip(NO_GROUP, 'No group'));
   // Bring the picked chip into view sideways only (scrollIntoView can also scroll the whole page on iPhone).
   const on = box.querySelector('.on');
@@ -477,8 +565,8 @@ function tallyCard(t, bump) {
   },
   el('div', { class: 'card-top' },
     el('div', { class: 'card-name' + nameSizeClass(t.name) }, goalTitle(t, goalReached(t, count))),
-    el('div', { class: 'card-period' }, PERIOD_LABEL[t.reset] || 'TODAY',
-      t.dueDate ? el('span', { class: 'card-due' }, `· BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}`) : null,
+    el('div', { class: 'card-period' }, byDate(t) ? `BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}` : PERIOD_LABEL[t.reset] || 'TODAY',
+      t.dueDate && !byDate(t) ? el('span', { class: 'card-due' }, `· BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}`) : null,
       goalBadge(t, count))),
   el('div', { class: `card-count ${sizeClass}` }, isCheck(t) ? checkMark(count >= 1) : countText),
   cardFoot(t, bottom),
@@ -702,14 +790,10 @@ function lastInPeriod(t) {
 function takeBack(t) {
   const last = lastInPeriod(t);
   if (!last) return;
-  state.entries = state.entries.filter(e => e.id !== last.id);
+  entryChange(t.id, () => { state.entries = state.entries.filter(e => e.id !== last.id); });
   save();
   renderToday(t.id);
-  toast(`${t.name} −${num(t, last.value)}`, () => {
-    state.entries.push(last);
-    save();
-    renderToday();
-  });
+  toast(`${t.name} −${num(t, last.value)}`, () => entryUndo(t.id));
 }
 
 // Bottom row of a card: − take back, the label, + log.
@@ -743,16 +827,28 @@ function onTap(t) {
 
 function promptValue(t) {
   const field = amountField(t, null, { placeholder: `${capitalize(unitLabel(t))} (default ${num(t, t.defaultCount || 1)})` });
+  const now = new Date();
+  const dateLabel = el('div', { class: 'log-date' });
+  const showDate = d => { dateLabel.textContent = `${sameDay(d, now) ? 'Today' : DAY_NAMES[d.getDay()]} · ${longDate(toDateInput(d))}`; };
+  const wheels = dateWheels(now, { minYear: now.getFullYear() - 5, maxYear: now.getFullYear(), onChange: showDate });
+  const error = el('p', { class: 'form-error hidden' });
   const submit = () => {
     const read = field.read();
     const v = read == null ? (t.defaultCount || 1) : read;
     if (!isFinite(v) || v === 0) return;
+    const day = wheels.get();
+    if (day > now) { error.textContent = 'That day has not happened yet.'; error.classList.remove('hidden'); return; }
+    // today: right now; an earlier day: noon that day
+    const ts = sameDay(day, now) ? Date.now() : new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12).getTime();
     closeSheet();
-    logEntry(t, v);
+    logEntry(t, v, ts);
   };
   field.node.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
   openSheet(
-    el('h3', {}, `Log ${t.name}`),
+    el('h3', { class: 'log-title' }, `Log ${t.name}`),
+    dateLabel,
+    wheels.node,
+    error,
     isDuration(t) ? el('p', {}, `Leave blank to log ${durationLong(t, t.defaultCount || 1)}.`) : null,
     field.node,
     el('button', { class: 'sheet-btn primary', onclick: submit }, 'Log'),
@@ -761,21 +857,24 @@ function promptValue(t) {
   setTimeout(() => field.focus(), 250);
 }
 
+const UNDO_ICON = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
+const REDO_ICON = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>';
+
 function tallyMenu(t) {
-  const from = periodStart(t.reset).getTime();
-  const lastInPeriod = entriesFor(t.id).filter(e => e.ts >= from).sort((a, b) => b.ts - a.ts)[0];
+  const h = historyOf(t.id);
+  const arrow = (icon, label, enabled, fn) => {
+    const b = el('button', { type: 'button', class: 'icon-btn hist-arrow', 'aria-label': label, onclick: () => { if (fn()) tallyMenu(t); } });
+    b.innerHTML = icon;
+    b.disabled = !enabled;
+    return b;
+  };
   openSheet(
-    el('h3', {}, t.name),
+    el('div', { class: 'menu-head' },
+      el('h3', {}, t.name),
+      arrow(UNDO_ICON, 'Undo', h.back.length > 0, () => entryUndo(t.id)),
+      arrow(REDO_ICON, 'Redo', h.forward.length > 0, () => entryRedo(t.id))),
     el('button', { class: 'sheet-btn', onclick: () => { closeSheet(); setTimeout(() => promptValue(t), 300); } }, 'Log custom amount'),
-    lastInPeriod ? el('button', {
-      class: 'sheet-btn',
-      onclick: () => {
-        state.entries = state.entries.filter(e => e.id !== lastInPeriod.id);
-        save(); renderToday(); closeSheet(); toast('Last entry removed');
-      },
-    }, `Undo last (${fmt(lastInPeriod.value)})`) : null,
-    el('button', { class: 'sheet-btn', onclick: () => { closeSheet(); setTimeout(() => historySheet(t), 300); } }, 'History'),
-    el('button', { class: 'sheet-btn', onclick: () => { closeSheet(); openForm(t); } }, 'Edit'),
+    el('button', { class: 'sheet-btn', onclick: () => { closeSheet(); openForm(t); } }, 'Edit Goal Description'),
     el('button', { class: 'sheet-btn danger', onclick: () => { closeSheet(); deleteTally(t); } }, 'Delete goal'),
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
   );
@@ -837,28 +936,30 @@ function entrySheet(t, entry, opts = {}) {
   if (!entry && opts.date && startOfDay(opts.date) < startOfDay(now)) {
     when = new Date(opts.date); when.setHours(12, 0, 0, 0); // past day: default to noon
   }
-  const date = el('input', { class: 'text-input', type: 'date', value: toDateInput(when), max: toDateInput(now) });
+  const wheels = dateWheels(when, { minYear: now.getFullYear() - 10, maxYear: now.getFullYear() });
   const time = el('input', { class: 'text-input', type: 'time', value: toTimeInput(when) });
   const amount = amountField(t, entry ? entry.value : (t.defaultCount || 1));
   const error = el('p', { class: 'form-error hidden' });
 
   const submit = () => {
-    const [y, m, d] = (date.value || '').split('-').map(Number);
+    const day = wheels.get();
     const [hh, mm] = (time.value || '12:00').split(':').map(Number);
-    const ts = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0).getTime();
+    const ts = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hh || 0, mm || 0).getTime();
     const value = amount.read();
     let problem = '';
-    if (!date.value || !isFinite(ts)) problem = 'Pick a date.';
+    if (!isFinite(ts)) problem = 'Pick a date.';
     else if (ts > Date.now() + 60000) problem = 'That’s in the future. Pick a date and time that already happened.';
     else if (value == null || !isFinite(value) || value === 0) problem = 'Enter an amount.';
     if (problem) { error.textContent = problem; error.classList.remove('hidden'); return; }
 
-    if (entry) {
-      entry.ts = ts;
-      entry.value = value;
-    } else {
-      state.entries.push({ id: uid(), tallyId: t.id, ts, value });
-    }
+    entryChange(t.id, () => {
+      if (entry) {
+        entry.ts = ts;
+        entry.value = value;
+      } else {
+        state.entries.push({ id: uid(), tallyId: t.id, ts, value });
+      }
+    });
     save();
     refreshAll();
     const label = new Date(ts);
@@ -867,17 +968,16 @@ function entrySheet(t, entry, opts = {}) {
   };
 
   const remove = () => {
-    const removed = entry;
-    state.entries = state.entries.filter(x => x.id !== removed.id);
+    entryChange(t.id, () => { state.entries = state.entries.filter(x => x.id !== entry.id); });
     save();
     refreshAll();
-    toast('Entry deleted', () => { state.entries.push(removed); save(); refreshAll(); });
+    toast('Entry deleted', () => entryUndo(t.id));
     switchSheet(back);
   };
 
   openSheet(
     el('h3', {}, entry ? `Edit ${t.name} entry` : `Add past ${t.name} entry`),
-    el('label', { class: 'sheet-label' }, 'DATE', date),
+    el('div', { class: 'sheet-label' }, 'DATE', wheels.node),
     el('label', { class: 'sheet-label' }, 'TIME', time),
     el('div', { class: 'sheet-label' }, capitalize(unitLabel(t)).toUpperCase(), amount.node),
     error,
@@ -1054,11 +1154,12 @@ function syncForm() {
   $('#f-unit').classList.toggle('hidden', form.unit !== 'custom');
   $('#goal-amount-row').classList.toggle('hidden', isCheck(form));
   $('#amount-section').classList.toggle('hidden', isCheck(form));
-  setSeg('per', form.reset);
+  setSeg('per', byDate(form) ? 'date' : form.reset);
+  $('#f-default').value = isFinite(form.defaultCount) ? fmt(form.defaultCount) : $('#f-default').value;
   $('#bottom-unit-btn').textContent = unitLabel(form).toUpperCase() || 'MEASUREMENT';
   $('#group-value').textContent = form.groups.length ? form.groups.join(', ').toUpperCase() : 'NONE';
-  $('#btn-due').textContent = form.dueDate ? longDate(form.dueDate) : 'Custom Date';
-  $('#btn-due').classList.toggle('on', !!form.dueDate);
+  $('#per-date').textContent = byDate(form) ? `BY ${longDate(form.dueDate).toUpperCase()}` : 'BY CUSTOM DATE';
+  if (byDate(form)) $('#goal-per').textContent = `BY ${longDate(form.dueDate).toUpperCase()}`;
   $('#reminder-value').textContent = form.reminder ? `DAILY AT ${fmtTime(form.reminder)}` : 'NONE';
   setSeg('colorTarget', colorTarget);
   const picked = colorTarget === 'goal' ? form.color : form.textColor;
@@ -1070,7 +1171,7 @@ function syncForm() {
 }
 
 function setSeg(field, value) {
-  $$(`[data-field="${field}"] button`).forEach(b => b.classList.toggle('on', b.dataset.v === value));
+  $$(`[data-field="${field}"] [data-v]`).forEach(b => b.classList.toggle('on', b.dataset.v === value));
 }
 
 function validateForm() {
@@ -1081,10 +1182,13 @@ function validateForm() {
   $('#btn-submit').disabled = !ok;
 }
 
-// Picking specific weekdays only applies to daily (or shorter) goals without a finish date;
-// weekly, monthly and yearly goals, and goals with a finish date, count every day.
+// "By custom date" goals count everything logged until their date (stored as reset 'never' + dueDate).
+const byDate = f => f.reset === 'never' && !!f.dueDate;
+
+// Picking specific weekdays applies to day, week, month and year goals; minute, hour and
+// by-date goals count every day.
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
-const daysPickable = f => !f.dueDate && !['week', 'month', 'year'].includes(f.reset);
+const daysPickable = f => !f.dueDate && ['day', 'week', 'month', 'year'].includes(f.reset);
 const measuredWeekdays = f => (daysPickable(f) ? f.days : ALL_DAYS);
 
 const PER_PHRASE = { minute: ' per minute', hour: ' per hour', day: ' per day', week: ' per week', month: ' per month', year: ' per year', never: ' in total' };
@@ -1204,10 +1308,10 @@ function goalDescription(f) {
     return t + '.';
   }
   let text = `Your goal is to ${f.direction} ${name}`;
-  if (f.target > 0) text += ` to ${isDuration(f) ? durationLong(f, f.target) : amountText(f, f.target)}${PER_PHRASE[f.reset]}`;
+  if (f.target > 0) text += ` to ${isDuration(f) ? durationLong(f, f.target) : amountText(f, f.target)}${byDate(f) ? '' : PER_PHRASE[f.reset]}`;
   const days = daysPhrase(measuredWeekdays(f));
   if (days) text += (f.reset === 'day' || f.reset === 'hour' || f.reset === 'minute') ? ` on ${days}` : `, tracked on ${days}`;
-  if (f.dueDate) text += `, by ${longDate(f.dueDate)}`;
+  if (f.dueDate) text += `${byDate(f) && f.target > 0 ? '' : ','} by ${longDate(f.dueDate)}`;
   return text + '.';
 }
 
@@ -1216,6 +1320,7 @@ function renderGoalDesc() {
   const text = goalDescription(form);
   p.textContent = text || 'Enter a goal title to see your goal.';
   p.classList.toggle('empty-desc', !text);
+  renderColorPreview(); // the preview card shows the title, goal and period too
 }
 
 function fmtTime(hhmm) {
@@ -1239,20 +1344,33 @@ $('#text-auto').addEventListener('click', () => { form.textColor = ''; syncForm(
 function renderColorPreview() {
   const box = $('#color-preview');
   box.innerHTML = '';
-  const t = { ...form, name: (form.name || '').trim() || 'Your goal' };
-  box.append(el('div', { class: `card preview-card ${cardColorClass(t)}`, style: cardColorStyle(t) },
-    el('div', { class: 'card-top' },
-      el('div', { class: 'card-name' + nameSizeClass(t.name) }, goalTitle(t)),
-      el('div', { class: 'card-period' }, PERIOD_LABEL[t.reset] || 'TODAY')),
-    el('div', { class: 'card-count' }, t.target ? `0/${num(t, t.target)}` : '0')));
+  // The real home-screen card (same builder, same count, buttons and bottom text), shrunk to fit.
+  const t = { ...form, id: editingId || '__preview', name: (form.name || '').trim() || 'Your goal', days: measuredWeekdays(form) };
+  const wasEditing = editMode;
+  editMode = false;
+  const card = tallyCard(t, false);
+  editMode = wasEditing;
+  const CARD_W = 164;
+  const inner = el('div', { class: 'preview-scale', style: `width:${CARD_W}px`, 'aria-hidden': 'true' }, card);
+  box.append(inner);
+  const fit = () => {
+    const scale = (box.clientWidth || 118) / CARD_W;
+    inner.style.transform = `scale(${scale})`;
+    if (card.offsetHeight) box.style.height = `${Math.ceil(card.offsetHeight * scale)}px`;
+  };
+  fit();
+  requestAnimationFrame(fit); // measure again once the screen is showing
 }
 
 // Segmented controls
 $$('#create-form .seg').forEach(seg => seg.addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
+  const b = e.target.closest('[data-v]'); if (!b) return;
   const v = b.dataset.v;
   switch (seg.dataset.field) {
-    case 'per': form.reset = v; break;
+    case 'per':
+      if (v === 'date') { dueDateSheet(); return; }
+      form.reset = v; form.dueDate = '';
+      break;
     case 'colorTarget': colorTarget = v; break;
     case 'logMode': form.logMode = v; autoCustom = false; break;
     case 'bottomMode': form.bottomMode = v; break;
@@ -1287,7 +1405,7 @@ $('[data-field="days"]').addEventListener('click', e => {
 });
 
 $('#f-name').addEventListener('input', e => { form.name = e.target.value; validateForm(); renderGoalDesc(); });
-$('#f-default').addEventListener('input', e => { form.defaultCount = parseFloat(e.target.value); validateForm(); });
+$('#f-default').addEventListener('input', e => { form.defaultCount = parseFloat(e.target.value); validateForm(); renderColorPreview(); });
 $('#f-goal').addEventListener('input', e => {
   const v = parseFloat(e.target.value);
   form.target = isFinite(v) ? v : null;
@@ -1295,7 +1413,7 @@ $('#f-goal').addEventListener('input', e => {
 });
 $('#f-examples').addEventListener('input', e => { form.examples = e.target.value; });
 $('#f-nonexamples').addEventListener('input', e => { form.nonExamples = e.target.value; });
-$('#f-bottom').addEventListener('input', e => { form.bottomText = e.target.value; });
+$('#f-bottom').addEventListener('input', e => { form.bottomText = e.target.value; renderColorPreview(); });
 $('#f-unit').addEventListener('input', e => {
   form.customUnit = e.target.value;
   validateForm(); renderGoalDesc();
@@ -1368,16 +1486,73 @@ function longDate(ymd) {
   const [y, m, d] = ymd.split('-').map(Number);
   return `${MONTH_SHORT[m - 1]} ${d}, ${y}`;
 }
-$('#btn-due').addEventListener('click', () => {
-  const input = el('input', { class: 'text-input', type: 'date', value: form.dueDate || '' });
+// PER → BY CUSTOM DATE: the goal counts everything logged until this date.
+function dueDateSheet() {
+  const now = new Date();
+  const start = form.dueDate ? fromYmd(form.dueDate) : addDays(startOfDay(now), 30);
+  const wheels = dateWheels(start, { minYear: now.getFullYear(), maxYear: now.getFullYear() + 10 });
+  const error = el('p', { class: 'form-error hidden' });
   openSheet(
     el('h3', {}, 'Accomplish this goal by'),
-    el('p', {}, 'Pick the date you want to reach this goal.'),
-    input,
-    el('button', { class: 'sheet-btn primary', onclick: () => { form.dueDate = input.value || ''; syncForm(); closeSheet(); } }, 'Save date'),
-    form.dueDate ? el('button', { class: 'sheet-btn', onclick: () => { form.dueDate = ''; syncForm(); closeSheet(); } }, 'Remove date') : null,
+    el('p', {}, 'Pick the date you want to reach this goal. Everything you log until then counts toward it.'),
+    wheels.node,
+    error,
+    el('button', {
+      class: 'sheet-btn primary',
+      onclick: () => {
+        const d = wheels.get();
+        if (d < startOfDay(now)) { error.textContent = 'Pick today or a later date.'; error.classList.remove('hidden'); return; }
+        form.reset = 'never'; form.dueDate = toDateInput(d); syncForm(); closeSheet();
+      },
+    }, 'Save date'),
+    el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
   );
-});
+}
+
+const fromYmd = ymd => { const [y, m, d] = ymd.split('-').map(Number); return new Date(y, m - 1, d); };
+
+// Date picker with three spinning wheels (month, day, year), like the iPhone's.
+// Returns { node, get } where get() is the picked day at midnight.
+function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
+  const ROW = 36;
+  let m = initial.getMonth(), d = initial.getDate(), y = initial.getFullYear();
+  minYear = Math.min(minYear ?? y - 5, y); maxYear = Math.max(maxYear ?? y + 5, y);
+  const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i);
+  const days = Array.from({ length: 31 }, (_, i) => i + 1);
+
+  const wheel = (labels, index, onPick, cls) => {
+    const items = labels.map((label, i) => el('div', { class: 'wheel-item', onclick: () => col.scrollTo({ top: i * ROW, behavior: 'smooth' }) }, String(label)));
+    const col = el('div', { class: `wheel ${cls}` }, el('div', { class: 'wheel-pad' }), items, el('div', { class: 'wheel-pad' }));
+    const mark = i => items.forEach((it, j) => it.classList.toggle('on', j === i));
+    let timer = null;
+    col.addEventListener('scroll', () => {
+      const i = Math.max(0, Math.min(labels.length - 1, Math.round(col.scrollTop / ROW)));
+      mark(i);
+      clearTimeout(timer);
+      timer = setTimeout(() => onPick(i), 90);
+    });
+    col.setIndex = i => { col.scrollTop = i * ROW; mark(i); };
+    col.items = items;
+    mark(index);
+    setTimeout(() => col.setIndex(index), 0); // once it's on the page
+    return col;
+  };
+
+  const fixDay = () => {
+    const max = daysInMonth(y, m);
+    dayWheel.items.forEach((it, i) => it.classList.toggle('off', i + 1 > max));
+    if (d > max) { d = max; dayWheel.setIndex(d - 1); }
+    onChange?.(new Date(y, m, d));
+  };
+  const monthWheel = wheel(MONTH_SHORT, m, i => { m = i; fixDay(); }, 'wheel-month');
+  const dayWheel = wheel(days, d - 1, i => { d = i + 1; fixDay(); }, 'wheel-day');
+  const yearWheel = wheel(years, y - minYear, i => { y = years[i]; fixDay(); }, 'wheel-year');
+  fixDay();
+  return {
+    node: el('div', { class: 'wheels' }, monthWheel, dayWheel, yearWheel),
+    get: () => new Date(y, m, Math.min(d, daysInMonth(y, m))),
+  };
+}
 
 $('#btn-reminder').addEventListener('click', () => {
   const input = el('input', { class: 'text-input', type: 'time', value: form.reminder || '09:00' });
@@ -1504,7 +1679,7 @@ function renderStats() {
   $$('.view-btn').forEach(b => b.classList.toggle('on', b.dataset.view === statsState.view));
 
   // Which goals to show: the Stats page has its own group and period filters.
-  const groupNames = [...new Set(state.tallies.map(t => t.group).filter(Boolean))];
+  const groupNames = allGroupNames();
   let sg = state.settings.statsGroupFilter || '';
   if (sg && sg !== NO_GROUP && !groupNames.includes(sg)) sg = state.settings.statsGroupFilter = '';
   const sf = state.settings.statsFilter || 'all';
