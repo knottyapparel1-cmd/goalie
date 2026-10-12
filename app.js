@@ -1547,15 +1547,20 @@ function renderStats() {
     }
     // Average over every measured day (the weekdays picked for the goal), whether or not anything was logged.
     const measured = measuredDays(t, startMs, endMs);
-    const avg = measured ? total / measured : 0;
+    const avgPer = averagePeriod(t);
+    const periods = avgPer ? measuredPeriods(t, avgPer, startMs, endMs) : measured;
+    const avg = periods ? total / periods : 0;
+    // Weekly, monthly and yearly goals average per week/month/year; on views no longer than one goal
+    // period (a weekly goal on Week, a yearly goal on any view) only the total makes sense.
+    const totalOnly = isDay || (avgPer && PERIOD_DAYS[avgPer] >= PERIOD_DAYS[statsState.range]);
     const totalText = `${amountText(t, total).toUpperCase()}${isMoney(t) || isDuration(t) ? ' TOTAL' : ''}`;
 
     const card = el('div', { class: `stat-card ${cardColorClass(t)}`, style: cardColorStyle(t, 'stat') },
       el('h3', {}, goalTitle(t)),
       el('div', { class: 'stat-sub' }, isCheck(t)
         ? `${fmt(total)} ✓ ${total === 1 ? 'CHECK-IN' : 'CHECK-INS'}`
-        : isDay ? totalText
-        : `${totalText} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER MEASURED DAY`));
+        : totalOnly ? totalText
+        : `${totalText} · ${isDuration(t) ? amountText(t, avg).toUpperCase() : num(t, avg)} PER ${avgPer ? avgPer.toUpperCase() : 'MEASURED DAY'}`));
 
     const pick = i => pickBucket(t, r, i);
     const isBars = statsState.view === 'bars';
@@ -1667,6 +1672,23 @@ function measuredDays(t, fromMs, toMs) {
     if (!t.days || t.days.includes(d.getDay())) days++;
   }
   return days;
+}
+
+const PERIOD_DAYS = { day: 1, week: 7, month: 30, year: 365 };
+const averagePeriod = t => (['week', 'month', 'year'].includes(t.reset) ? t.reset : null);
+
+// How many weeks, months or years were measured between two times (partial ones count as a fraction).
+function measuredPeriods(t, per, fromMs, toMs) {
+  if (per === 'week') return measuredDays(t, fromMs, toMs) / 7;
+  let n = 0;
+  for (let d = new Date(fromMs); d.getTime() < toMs;) {
+    const next = per === 'month' ? new Date(d.getFullYear(), d.getMonth() + 1, 1) : new Date(d.getFullYear() + 1, 0, 1);
+    const start = per === 'month' ? new Date(d.getFullYear(), d.getMonth(), 1) : new Date(d.getFullYear(), 0, 1);
+    const len = Math.round((next - start) / DAY_MS);
+    n += measuredDays(t, d.getTime(), Math.min(next.getTime(), toMs)) / len;
+    d = next;
+  }
+  return n;
 }
 
 function periodsCounted(t, year, month) {
