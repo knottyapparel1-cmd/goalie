@@ -16,9 +16,20 @@
   <link rel="apple-touch-icon" sizes="180x180" href="icons/goalie-nb-touch-180.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=block" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
   <script>
+    // Keep the page hidden until the Outfit font is ready, so it doesn't draw in the system font
+    // first and then jump in size. Shows anyway after 1.5 seconds (e.g. offline on first open).
+    (function () {
+      var html = document.documentElement;
+      html.classList.add('fonts-loading');
+      var show = function () { html.classList.remove('fonts-loading'); };
+      setTimeout(show, 1500);
+      if (document.fonts && document.fonts.load) {
+        Promise.all([document.fonts.load('700 16px Outfit'), document.fonts.load('600 16px Outfit'), document.fonts.load('800 16px Outfit')]).then(show, show);
+      } else show();
+    })();
     // Apply the saved theme before the page draws, so dark mode doesn't flash white.
     try {
       var t = (JSON.parse(localStorage.getItem('goalie.v1') || '{}').settings || {}).theme || 'auto';
@@ -283,6 +294,12 @@
         <button type="button" data-v="1">MONDAY</button>
       </div>
 
+      <div class="field-label">WHEN LOGGING CUSTOM DATES:</div>
+      <div class="seg pills stack" id="set-custommode">
+        <button type="button" data-v="add">ADD CUSTOM AMOUNT TO EXISTING NUMBER</button>
+        <button type="button" data-v="replace">REPLACE EXISTING NUMBER WITH CUSTOM AMOUNT</button>
+      </div>
+
       <div class="field-label">BACKUP</div>
       <button class="row-btn" id="btn-export">Export data (JSON)</button>
       <label class="row-btn" for="import-file">Import data (JSON)</label>
@@ -292,9 +309,13 @@
       <button class="row-btn" id="btn-notify">Turn on reminder banners</button>
       <p class="note" id="notify-status"></p>
 
-      <div class="field-label">RECENTLY DELETED</div>
-      <div id="trash-list" class="trash-list"></div>
-      <p class="note">Deleted goals and finished or deleted to-dos are kept here for 30 days, then removed for good.</p>
+      <button type="button" class="field-label fold-head" id="trash-toggle" aria-expanded="false" aria-controls="trash-body">
+        RECENTLY DELETED <span class="group-count" id="trash-count"></span><span class="fold-chev" aria-hidden="true">›</span>
+      </button>
+      <div id="trash-body" class="hidden">
+        <div id="trash-list" class="trash-list"></div>
+        <p class="note">Deleted goals and finished or deleted to-dos are kept here for 30 days, then removed for good.</p>
+      </div>
 
       <div class="field-label">APP UPDATES</div>
       <button class="row-btn" id="btn-force-update">Update Goalie now</button>

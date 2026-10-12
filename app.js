@@ -81,7 +81,7 @@ const DEFAULT_STATE = () => ({
   todos: [], // { id, title, section, priority (bool), quadrant (1-4), done, createdAt, doneAt }
   todoSections: [], // section names, in order
   todoTrash: [], // completed or deleted to-dos: { id, todo, reason ('completed' | 'deleted'), deletedAt }
-  settings: { layout: 'grid', weekStart: 0, reminderFired: {}, theme: 'auto' },
+  settings: { layout: 'grid', weekStart: 0, reminderFired: {}, theme: 'auto', customDateMode: 'add' },
 });
 
 const TRASH_DAYS = 30;
@@ -220,12 +220,19 @@ function hasActivityToday(id) {
 }
 
 // ts: when it happened (now by default; the custom amount sheet can pick an earlier day).
-function logEntry(t, value, ts = Date.now()) {
+// replaceDay: remove what was already logged that day first (Settings → When logging custom dates).
+function logEntry(t, value, ts = Date.now(), replaceDay = false) {
   if (isCheck(t)) {
     if (ts >= periodStart(t.reset).getTime() && currentCount(t) >= 1) { toast(`${t.name} is already checked off`); return; }
     value = 1;
   }
-  entryChange(t.id, () => state.entries.push({ id: uid(), tallyId: t.id, ts, value: Number(value) }));
+  entryChange(t.id, () => {
+    if (replaceDay) {
+      const from = startOfDay(new Date(ts)).getTime(), to = addDays(startOfDay(new Date(ts)), 1).getTime();
+      state.entries = state.entries.filter(e => e.tallyId !== t.id || e.ts < from || e.ts >= to);
+    }
+    state.entries.push({ id: uid(), tallyId: t.id, ts, value: Number(value) });
+  });
   save();
   renderToday(t.id);
   toast(isCheck(t) ? `${t.name} ✓` : `${t.name} ${value >= 0 ? '+' : '−'}${num(t, Math.abs(value))}`, () => entryUndo(t.id));
@@ -830,7 +837,18 @@ function promptValue(t) {
   const now = new Date();
   const dateLabel = el('div', { class: 'log-date' });
   const showDate = d => { dateLabel.textContent = `${sameDay(d, now) ? 'Today' : DAY_NAMES[d.getDay()]} · ${longDate(toDateInput(d))}`; };
-  const wheels = dateWheels(now, { minYear: now.getFullYear() - 5, maxYear: now.getFullYear(), onChange: showDate });
+  // Settings → When logging custom dates: add to that day's number, or replace it.
+  const replacing = () => state.settings.customDateMode === 'replace';
+  const modeNote = el('p', { class: 'note log-mode' });
+  const onDay = d => {
+    showDate(d);
+    const from = startOfDay(d).getTime(), to = addDays(startOfDay(d), 1).getTime();
+    const already = entriesFor(t.id).filter(e => e.ts >= from && e.ts < to).reduce((sum, e) => sum + e.value, 0);
+    modeNote.textContent = !already || isCheck(t) ? ''
+      : replacing() ? `Replaces the ${amountText(t, already)} already logged that day.`
+      : `Adds to the ${amountText(t, already)} already logged that day.`;
+  };
+  const wheels = dateWheels(now, { minYear: now.getFullYear() - 5, maxYear: now.getFullYear(), onChange: onDay });
   const error = el('p', { class: 'form-error hidden' });
   const submit = () => {
     const read = field.read();
@@ -841,13 +859,14 @@ function promptValue(t) {
     // today: right now; an earlier day: noon that day
     const ts = sameDay(day, now) ? Date.now() : new Date(day.getFullYear(), day.getMonth(), day.getDate(), 12).getTime();
     closeSheet();
-    logEntry(t, v, ts);
+    logEntry(t, v, ts, replacing());
   };
   field.node.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
   openSheet(
     el('h3', { class: 'log-title' }, `Log ${t.name}`),
     dateLabel,
     wheels.node,
+    modeNote,
     error,
     isDuration(t) ? el('p', {}, `Leave blank to log ${durationLong(t, t.defaultCount || 1)}.`) : null,
     field.node,
@@ -2017,6 +2036,12 @@ $$('.view-btn').forEach(b => b.addEventListener('click', () => { statsState.view
 function renderTrash() {
   const box = $('#trash-list');
   box.innerHTML = '';
+  // Collapsible: the arrow opens and closes the list; the count shows how many are inside.
+  const open = !!state.settings.trashOpen;
+  $('#trash-body').classList.toggle('hidden', !open);
+  $('#trash-toggle').setAttribute('aria-expanded', String(open));
+  const n = state.trash.length + state.todoTrash.length;
+  $('#trash-count').textContent = String(n);
   if (!state.trash.length && !state.todoTrash.length) {
     box.append(el('p', { class: 'note trash-empty' }, 'Nothing here.'));
     return;
@@ -2070,6 +2095,7 @@ function renderSettings() {
   if (document.activeElement !== $('#set-name')) $('#set-name').value = state.settings.name || '';
   renderTrash();
   $$('#set-weekstart button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.settings.weekStart));
+  $$('#set-custommode button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.settings.customDateMode || 'add')));
   const status = $('#notify-status');
   if (!('Notification' in window)) {
     status.textContent = 'System banners need Goalie added to your Home Screen (iOS 16.4+). In-app banners still work.';
@@ -2150,6 +2176,17 @@ $('#set-weekstart').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   state.settings.weekStart = +b.dataset.v;
   save(); renderSettings(); renderToday();
+});
+
+$('#set-custommode').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.settings.customDateMode = b.dataset.v;
+  save(); renderSettings();
+});
+
+$('#trash-toggle').addEventListener('click', () => {
+  state.settings.trashOpen = !state.settings.trashOpen;
+  save(); renderTrash();
 });
 
 $('#btn-export').addEventListener('click', async () => {

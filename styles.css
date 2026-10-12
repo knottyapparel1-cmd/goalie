@@ -1493,3 +1493,15 @@ html[data-theme="dark"] .p-low .todo-tag, html[data-theme="dark"] .todo-tag.p-lo
 .group-chips.editing .group-chip[data-group]:nth-child(even) { animation-direction: alternate-reverse; }
 .group-chip.dragging { animation: none !important; transform: scale(1.08); box-shadow: 0 6px 16px rgba(0,0,0,.18); z-index: 2; }
 @media (prefers-reduced-motion: reduce) { .group-chips.editing .group-chip { animation: none !important; } }
+
+/* ---------- Load: hide until the Outfit font is ready (no size jump) ---------- */
+html.fonts-loading body { visibility: hidden; }
+
+/* ---------- Settings: collapsible Recently Deleted, stacked option buttons ---------- */
+.fold-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; }
+.fold-head .fold-chev { margin-left: auto; font-size: 22px; line-height: 1; color: var(--muted); transform: rotate(90deg); transition: transform .2s; }
+.fold-head[aria-expanded="true"] .fold-chev { transform: rotate(-90deg); }
+.seg.pills.stack { flex-direction: column; gap: 8px; }
+.seg.pills.stack button { width: 100%; height: auto; min-height: 48px; padding: 10px 14px; line-height: 1.3; }
+.log-mode:empty { display: none; }
+.log-mode { margin: 0 0 4px; }
