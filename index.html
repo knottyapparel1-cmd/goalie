@@ -35,18 +35,19 @@
   <!-- HOME -->
   <section id="screen-today" class="screen active">
     <header class="today-header">
-      <button class="icon-btn edit-toggle" id="btn-edit" aria-label="Edit goals" aria-pressed="false">
-        <svg class="edit-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M17.6 3.4a2 2 0 0 1 2.9 2.9L12 14.8l-3.8.9.9-3.8 8.5-8.5z"/></svg>
-        <span class="edit-done">DONE</span>
-      </button>
-      <button class="edit-cancel hidden" id="btn-edit-cancel" aria-label="Cancel edits">CANCEL</button>
-      <button class="icon-btn header-settings" id="btn-settings" aria-label="Settings">
-        <svg viewBox="0 0 24 24" width="26" height="26" fill="#6b7280"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5L19.4 13zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
-      </button>
+      <div class="header-left">
+        <button class="icon-btn header-settings" id="btn-settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="#6b7280"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.6a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.5L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.5 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.6h4l.4-2.6a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.5L19.4 13zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+        </button>
+        <button class="icon-btn muted" id="btn-help" aria-label="Help">?</button>
+        <button class="edit-cancel hidden" id="btn-edit-cancel" aria-label="Cancel edits">CANCEL</button>
+      </div>
       <h1>GOALIE</h1>
       <div class="header-actions">
-        <button class="icon-btn muted" id="btn-help" aria-label="Help">?</button>
-        <span class="divider"></span>
+        <button class="icon-btn edit-toggle" id="btn-edit" aria-label="Edit goals" aria-pressed="false">
+          <svg class="edit-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/><path d="M17.6 3.4a2 2 0 0 1 2.9 2.9L12 14.8l-3.8.9.9-3.8 8.5-8.5z"/></svg>
+          <span class="edit-done">DONE</span>
+        </button>
         <button class="icon-btn layout-toggle" id="btn-layout" aria-label="Switch to list view">
           <!-- shown in square view: tap for flat rows -->
           <svg class="icon-to-list" viewBox="0 0 24 24" width="26" height="26" fill="#6b7280"><rect x="3" y="4" width="18" height="4.2" rx="1.6"/><rect x="3" y="9.9" width="18" height="4.2" rx="1.6"/><rect x="3" y="15.8" width="18" height="4.2" rx="1.6"/></svg>
@@ -105,6 +106,7 @@
         <button type="button" data-v="decrease">DECREASE</button>
       </div>
 
+      <div id="days-section">
       <div class="field-label">WHICH DAYS WILL BE MEASURED?</div>
       <div class="days-summary" id="days-summary" aria-live="polite"></div>
       <div class="days multi" data-field="days">
@@ -115,6 +117,7 @@
         <button type="button" data-v="4">THU</button>
         <button type="button" data-v="5">FRI</button>
         <button type="button" data-v="6">SAT</button>
+      </div>
       </div>
       <div class="due-row">
         <span class="due-label">This goal will be accomplished by:</span>
@@ -239,7 +242,15 @@
   <!-- TO-DO -->
   <section id="screen-todo" class="screen modal">
     <div class="modal-head">
-      <h1>TO-DO</h1>
+      <div class="todo-head">
+        <h1>TO-DO</h1>
+        <button class="icon-btn todo-hist" id="btn-todo-undo" aria-label="Undo" disabled>
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+        </button>
+        <button class="icon-btn todo-hist" id="btn-todo-redo" aria-label="Redo" disabled>
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+        </button>
+      </div>
       <button class="close-btn" data-close aria-label="Close">&times;</button>
     </div>
     <div class="seg tabs todo-tabs" id="todo-view">
@@ -287,7 +298,7 @@
 
       <div class="field-label">RECENTLY DELETED</div>
       <div id="trash-list" class="trash-list"></div>
-      <p class="note">Deleted goals are kept here for 30 days, then removed for good.</p>
+      <p class="note">Deleted goals and finished or deleted to-dos are kept here for 30 days, then removed for good.</p>
 
       <div class="field-label">APP UPDATES</div>
       <button class="row-btn" id="btn-force-update">Update Goalie now</button>

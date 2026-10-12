@@ -80,6 +80,7 @@ const DEFAULT_STATE = () => ({
   trash: [], // recently deleted goals: { id, tally, entries, index, deletedAt }
   todos: [], // { id, title, section, priority (bool), quadrant (1-4), done, createdAt, doneAt }
   todoSections: [], // section names, in order
+  todoTrash: [], // completed or deleted to-dos: { id, todo, reason ('completed' | 'deleted'), deletedAt }
   settings: { layout: 'grid', weekStart: 0, reminderFired: {}, theme: 'auto' },
 });
 
@@ -107,6 +108,14 @@ if (!state.settings.unitLabelMigrated) {
   const cutoff = Date.now() - TRASH_DAYS * 86400000;
   const kept = state.trash.filter(item => item.deletedAt >= cutoff);
   if (kept.length !== state.trash.length) { state.trash = kept; save(); }
+  // To-dos checked off before they moved to Recently Deleted on completion.
+  const finished = state.todos.filter(t => t.done);
+  if (finished.length) {
+    state.todos = state.todos.filter(t => !t.done);
+    for (const t of finished) state.todoTrash.unshift({ id: 'tt' + t.id, todo: { ...t, done: false, doneAt: null }, reason: 'completed', deletedAt: t.doneAt || Date.now() });
+  }
+  const keptTodos = state.todoTrash.filter(item => item.deletedAt >= cutoff);
+  if (finished.length || keptTodos.length !== state.todoTrash.length) { state.todoTrash = keptTodos; save(); }
 }
 
 function load() {
@@ -121,6 +130,7 @@ function load() {
       trash: Array.isArray(data.trash) ? data.trash : [],
       todos: Array.isArray(data.todos) ? data.todos : [],
       todoSections: Array.isArray(data.todoSections) ? data.todoSections : [],
+      todoTrash: Array.isArray(data.todoTrash) ? data.todoTrash : [],
       settings: { ...base.settings, ...(data.settings || {}) },
     };
   } catch (e) {
@@ -282,8 +292,17 @@ function setEditMode(on) {
   renderToday();
 }
 
+// Rebuilding the cards empties the list for a moment, which would snap it back to the top;
+// keep the scroll position so logging an entry leaves the page where it was.
 function renderToday(bumpId) {
   if (dragActive) return; // the drop re-renders
+  const list = $('#tally-list'), top = list.scrollTop, pageTop = window.scrollY;
+  drawToday(bumpId);
+  list.scrollTop = top;
+  if (window.scrollY !== pageTop) window.scrollTo(0, pageTop);
+}
+
+function drawToday(bumpId) {
   document.querySelectorAll('.drag-ghost').forEach(g => g.remove());
   const list = $('#tally-list');
   if (editMode && !state.tallies.length) editMode = false;
@@ -395,7 +414,13 @@ function renderGroupChips(groupNames, active, box = $('#group-chips'), onPick = 
   box.append(chip('', 'All'));
   groupNames.forEach(g => box.append(chip(g, g)));
   if (state.tallies.some(t => !groupsOf(t).length)) box.append(chip(NO_GROUP, 'No group'));
-  box.querySelector('.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  // Bring the picked chip into view sideways only (scrollIntoView can also scroll the whole page on iPhone).
+  const on = box.querySelector('.on');
+  if (on) {
+    const left = on.getBoundingClientRect().left - box.getBoundingClientRect().left + box.scrollLeft, right = left + on.offsetWidth;
+    if (left < box.scrollLeft) box.scrollLeft = left;
+    else if (right > box.scrollLeft + box.clientWidth) box.scrollLeft = right - box.clientWidth;
+  }
 }
 
 // Removes the group name only: its goals stay and move to "No group".
@@ -1022,6 +1047,7 @@ function syncForm() {
   setSeg('bottomMode', form.bottomMode);
   $$('[data-field="days"] button').forEach(b => b.classList.toggle('on', form.days.includes(+b.dataset.v)));
   $('#days-summary').textContent = daysSummary(form.days);
+  $('#days-section').classList.toggle('hidden', !daysPickable(form));
   $('#goal-per').textContent = PER_PHRASE[form.reset].trim().toUpperCase();
   renderGoalDesc();
   $('#f-bottom').classList.toggle('hidden', form.bottomMode !== 'custom');
@@ -1048,12 +1074,18 @@ function setSeg(field, value) {
 }
 
 function validateForm() {
-  const ok = form.name.trim().length > 0 && form.days.length > 0 &&
+  const ok = form.name.trim().length > 0 && (form.days.length > 0 || !daysPickable(form)) &&
     isFinite(form.defaultCount) && form.defaultCount !== 0 &&
     (form.target == null || form.target > 0) &&
     (form.unit !== 'custom' || (form.customUnit || '').trim().length > 0);
   $('#btn-submit').disabled = !ok;
 }
+
+// Picking specific weekdays only applies to daily (or shorter) goals without a finish date;
+// weekly, monthly and yearly goals, and goals with a finish date, count every day.
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+const daysPickable = f => !f.dueDate && !['week', 'month', 'year'].includes(f.reset);
+const measuredWeekdays = f => (daysPickable(f) ? f.days : ALL_DAYS);
 
 const PER_PHRASE = { minute: ' per minute', hour: ' per hour', day: ' per day', week: ' per week', month: ' per month', year: ' per year', never: ' in total' };
 const DAY_PLURAL = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
@@ -1166,14 +1198,14 @@ function goalDescription(f) {
   if (isCheck(f)) {
     const every = { minute: 'every minute', hour: 'every hour', day: 'every day', week: 'every week', month: 'every month', year: 'every year', never: 'once' }[f.reset];
     let t = `Your goal is to ${f.direction === 'decrease' ? 'avoid' : 'check off'} ${name} ${every}`;
-    const d = daysPhrase(f.days);
+    const d = daysPhrase(measuredWeekdays(f));
     if (d) t += ` on ${d}`;
     if (f.dueDate) t += `, by ${longDate(f.dueDate)}`;
     return t + '.';
   }
   let text = `Your goal is to ${f.direction} ${name}`;
   if (f.target > 0) text += ` to ${isDuration(f) ? durationLong(f, f.target) : amountText(f, f.target)}${PER_PHRASE[f.reset]}`;
-  const days = daysPhrase(f.days);
+  const days = daysPhrase(measuredWeekdays(f));
   if (days) text += (f.reset === 'day' || f.reset === 'hour' || f.reset === 'minute') ? ` on ${days}` : `, tracked on ${days}`;
   if (f.dueDate) text += `, by ${longDate(f.dueDate)}`;
   return text + '.';
@@ -1374,6 +1406,7 @@ $('#btn-submit').addEventListener('click', () => {
     group: (form.groups[0] || '').trim(),
     examples: (form.examples || '').trim(),
     nonExamples: (form.nonExamples || '').trim(),
+    days: measuredWeekdays(form).slice(),
   };
   if (editingId) {
     const i = state.tallies.findIndex(t => t.id === editingId);
@@ -1528,12 +1561,13 @@ function renderStats() {
     const isBars = statsState.view === 'bars';
     let values = sums, goal = goalForChart(t), caption = null;
     const lastIdx = currentIdx >= 0 ? currentIdx : (r.start.getTime() > Date.now() ? -1 : sums.length - 1);
-    if (t.reset === statsState.range && !isCheck(t) && t.target > 0) {
-      // Daily goal on Day, weekly goal on Week…: show the running total climbing toward the goal.
-      let run = 0;
-      values = sums.map((v, i) => (i <= lastIdx ? (run += v) : 0));
+    if (showsRunningTotal(t)) {
+      // The goal's period is as long as the chart or longer (weekly goal on Week or Month, yearly goal
+      // on any view…): show the total so far in each goal period climbing toward the goal, starting
+      // over when a new period begins.
+      values = runningTotals(t, r, sums, lastIdx);
       goal = t.target;
-      caption = 'RUNNING TOTAL';
+      caption = t.reset === statsState.range ? 'RUNNING TOTAL' : `RUNNING ${RESET_ADJ[t.reset]} TOTAL`;
     } else if (statsState.range === 'year') {
       // How many goal periods each month counted (tracked days so far, in the goal's own period).
       const counts = sums.map((_, i) => periodsCounted(t, r.start.getFullYear(), i));
@@ -1554,6 +1588,41 @@ function renderStats() {
       : lineChart(t, values, bucketLabels(r), currentIdx, pick, scale, goal, caption));
     list.append(card);
   }
+}
+
+const RESET_ADJ = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY', year: 'YEARLY' };
+
+function showsRunningTotal(t) {
+  if (isCheck(t) || !(t.target > 0) || !(t.reset in RESET_ADJ)) return false;
+  const range = statsState.range;
+  if (range === 'year') return t.reset === 'year'; // weekly/monthly goals on Year use per-month averages and totals
+  return t.reset !== 'day' || range === 'day'; // daily goals on Week/Month compare each day to the goal instead
+}
+
+// When the goal period containing a moment began.
+function goalPeriodStart(reset, d) {
+  if (reset === 'week') return startOfWeek(d);
+  if (reset === 'month') return new Date(d.getFullYear(), d.getMonth(), 1);
+  if (reset === 'year') return new Date(d.getFullYear(), 0, 1);
+  return startOfDay(d);
+}
+
+// Running total for each chart step: everything logged so far in that step's goal period.
+function runningTotals(t, r, sums, lastIdx) {
+  const range = statsState.range;
+  const stepStart = i => (range === 'year' ? new Date(r.start.getFullYear(), i, 1)
+    : range === 'day' ? new Date(r.start.getFullYear(), r.start.getMonth(), r.start.getDate(), i)
+    : addDays(r.start, i));
+  // anything logged earlier in the first step's period, before this chart starts
+  const firstPeriod = goalPeriodStart(t.reset, r.start).getTime();
+  let run = entriesFor(t.id).reduce((s, e) => (e.ts >= firstPeriod && e.ts < r.start.getTime() ? s + e.value : s), 0);
+  let period = firstPeriod;
+  return sums.map((v, i) => {
+    if (i > lastIdx) return 0;
+    const p = goalPeriodStart(t.reset, stepStart(i)).getTime();
+    if (p !== period) { period = p; run = 0; }
+    return (run += v);
+  });
 }
 
 // The goal per chart step, when the goal's period matches the steps (daily goal on Week/Month, etc.).
@@ -1628,7 +1697,8 @@ function niceThirds(v) {
   return v;
 }
 const axisNum = v => fmt(Math.round(v * 10) / 10);
-const axisRows = max => (max <= 1 ? 1 : 3);
+// Rows between the y-axis numbers: whole numbers for small tops (0–1, 0–1–2), thirds otherwise.
+const axisRows = max => (max <= 1 ? 1 : max === 2 ? 2 : 3);
 
 // Y-axis labels: 0, ⅓, ⅔ and the top — or just 0 and the top when the top is 1 or less.
 function yAxisLabels(max) {
@@ -1750,15 +1820,23 @@ $$('.view-btn').forEach(b => b.addEventListener('click', () => { statsState.view
 function renderTrash() {
   const box = $('#trash-list');
   box.innerHTML = '';
-  if (!state.trash.length) {
+  if (!state.trash.length && !state.todoTrash.length) {
     box.append(el('p', { class: 'note trash-empty' }, 'Nothing here.'));
     return;
   }
-  for (const item of state.trash) {
+  const rows = [
+    ...state.trash.map(item => ({ at: item.deletedAt, row: () => goalTrashRow(item) })),
+    ...state.todoTrash.map(item => ({ at: item.deletedAt, row: () => todoTrashRow(item, renderTrash) })),
+  ].sort((a, b) => b.at - a.at);
+  for (const r of rows) box.append(r.row());
+}
+
+function goalTrashRow(item) {
+  {
     const daysLeft = Math.max(1, Math.ceil((item.deletedAt + TRASH_DAYS * DAY_MS - Date.now()) / DAY_MS));
     const when = relTime(item.deletedAt).replace(/^(Just now|Yesterday)$/, m => m.toLowerCase());
     const n = item.entries.length;
-    box.append(el('div', { class: 'trash-row' },
+    return el('div', { class: 'trash-row' },
       el('span', { class: 'trash-dot', style: `background:${item.tally.color}` }),
       el('div', { class: 'trash-info' },
         el('div', { class: 'trash-name' }, item.tally.name),
@@ -1782,7 +1860,7 @@ function renderTrash() {
           }, 'Delete forever'),
           el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
         ),
-      }, '×')));
+      }, '×'));
   }
 }
 
@@ -1908,7 +1986,7 @@ $('#import-file').addEventListener('change', async e => {
       el('button', {
         class: 'sheet-btn primary',
         onclick: () => {
-          state = { tallies: data.tallies, entries: data.entries, trash: Array.isArray(data.trash) ? data.trash : [], todos: Array.isArray(data.todos) ? data.todos : [], todoSections: Array.isArray(data.todoSections) ? data.todoSections : [], settings: { ...DEFAULT_STATE().settings, ...(data.settings || {}) } };
+          state = { tallies: data.tallies, entries: data.entries, trash: Array.isArray(data.trash) ? data.trash : [], todos: Array.isArray(data.todos) ? data.todos : [], todoSections: Array.isArray(data.todoSections) ? data.todoSections : [], todoTrash: Array.isArray(data.todoTrash) ? data.todoTrash : [], settings: { ...DEFAULT_STATE().settings, ...(data.settings || {}) } };
           save(); renderToday(); renderSettings(); closeSheet(); toast('Backup imported');
         },
       }, 'Import'),
@@ -2014,6 +2092,81 @@ const QUADRANTS = {
 };
 let todoView = 'lists';
 
+// Undo / redo for the to-do page: each change saves a snapshot of the to-do data first.
+const todoHistory = { back: [], forward: [] };
+const todoSnapshot = () => JSON.stringify({ todos: state.todos, todoSections: state.todoSections, todoTrash: state.todoTrash });
+function restoreTodoSnapshot(json) {
+  const s = JSON.parse(json);
+  state.todos = s.todos; state.todoSections = s.todoSections; state.todoTrash = s.todoTrash;
+  save(); renderTodos();
+  if ($('#screen-settings').classList.contains('active')) renderTrash();
+}
+function todoChange(fn) {
+  todoHistory.back.push(todoSnapshot());
+  if (todoHistory.back.length > 100) todoHistory.back.shift();
+  todoHistory.forward = [];
+  fn();
+  save(); renderTodos();
+}
+function todoUndo() {
+  if (!todoHistory.back.length) return;
+  todoHistory.forward.push(todoSnapshot());
+  restoreTodoSnapshot(todoHistory.back.pop());
+}
+function todoRedo() {
+  if (!todoHistory.forward.length) return;
+  todoHistory.back.push(todoSnapshot());
+  restoreTodoSnapshot(todoHistory.forward.pop());
+}
+function syncTodoHistoryButtons() {
+  $('#btn-todo-undo').disabled = !todoHistory.back.length;
+  $('#btn-todo-redo').disabled = !todoHistory.forward.length;
+}
+
+// Move a to-do to Recently Deleted (kept 30 days).
+function trashTodo(t, reason) {
+  state.todos = state.todos.filter(x => x !== t);
+  state.todoTrash.unshift({ id: uid(), todo: { ...t, done: false, doneAt: null }, reason, deletedAt: Date.now() });
+}
+
+function restoreTodo(item) {
+  state.todoTrash = state.todoTrash.filter(x => x.id !== item.id);
+  state.todos.push({ ...item.todo, done: false, doneAt: null });
+  if (item.todo.section && !state.todoSections.includes(item.todo.section)) state.todoSections.push(item.todo.section);
+}
+
+function todoTrashRow(item, rerender) {
+  const daysLeft = Math.max(1, Math.ceil((item.deletedAt + TRASH_DAYS * DAY_MS - Date.now()) / DAY_MS));
+  const when = relTime(item.deletedAt).replace(/^(Just now|Yesterday)$/, m => m.toLowerCase());
+  return el('div', { class: 'trash-row' },
+    el('span', { class: 'trash-dot todo-dot' }, item.reason === 'completed' ? checkMark(true) : null),
+    el('div', { class: 'trash-info' },
+      el('div', { class: 'trash-name todo-trash-name' }, item.todo.title),
+      el('div', { class: 'trash-meta' }, 'To-do · ' + (item.reason === 'completed' ? 'Completed' : 'Deleted') + ' ' + when + ' · ' + daysLeft + 'd left')),
+    el('button', {
+      class: 'trash-btn restore',
+      onclick: () => { todoChange(() => restoreTodo(item)); rerender(); toast('To-do restored'); },
+    }, 'Restore'),
+    el('button', {
+      class: 'trash-btn forever',
+      'aria-label': 'Delete ' + item.todo.title + ' forever',
+      onclick: () => { todoChange(() => { state.todoTrash = state.todoTrash.filter(x => x.id !== item.id); }); rerender(); toast('Deleted for good', todoUndo); },
+    }, '×'));
+}
+
+function todoTrashSheet() {
+  const draw = () => {
+    openSheet(
+      el('h3', {}, 'Recently deleted to-dos'),
+      el('p', { class: 'note' }, 'Completed and deleted to-dos stay here for 30 days, then are removed for good.'),
+      state.todoTrash.length
+        ? el('div', { class: 'trash-list' }, state.todoTrash.map(item => todoTrashRow(item, draw)))
+        : el('p', { class: 'note trash-empty' }, 'Nothing here.'),
+      el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Close'));
+  };
+  draw();
+}
+
 function todoSectionNames() {
   const names = [...state.todoSections];
   for (const t of state.todos) if (t.section && !names.includes(t.section)) names.push(t.section);
@@ -2021,6 +2174,7 @@ function todoSectionNames() {
 }
 
 function renderTodos() {
+  syncTodoHistoryButtons();
   $$('#todo-view button').forEach(b => b.classList.toggle('on', b.dataset.v === todoView));
   const box = $('#todo-list');
   box.innerHTML = '';
@@ -2034,6 +2188,12 @@ function renderTodos() {
   for (const name of sections) box.append(todoSection(name, state.todos.filter(t => t.section === name)));
   if (loose.length) box.append(todoSection('', loose));
   box.append(el('button', { type: 'button', class: 'todo-new-section', onclick: newSectionSheet }, '+ New section'));
+  box.append(todoTrashLink());
+}
+
+function todoTrashLink() {
+  const n = state.todoTrash.length;
+  return el('button', { type: 'button', class: 'todo-trash-link', onclick: todoTrashSheet }, 'Recently deleted' + (n ? ' (' + n + ')' : ''));
 }
 
 function todoSection(name, items) {
@@ -2058,7 +2218,18 @@ function todoRow(t, showSection) {
       type: 'button',
       class: 'todo-check',
       'aria-label': t.done ? `Mark ${t.title} not done` : `Mark ${t.title} done`,
-      onclick: () => { t.done = !t.done; t.doneAt = t.done ? Date.now() : null; save(); renderTodos(); },
+      onclick: e => {
+        // Show the check for a moment, then move it to Recently Deleted.
+        const btn = e.currentTarget;
+        btn.closest('.todo-row').classList.add('done', 'leaving');
+        btn.replaceChildren(checkMark(true));
+        btn.disabled = true;
+        setTimeout(() => {
+          if (!state.todos.includes(t)) return;
+          todoChange(() => trashTodo(t, 'completed'));
+          toast('Done! Moved to Recently deleted', todoUndo);
+        }, 450);
+      },
     }, t.done ? checkMark(true) : null),
     el('button', { type: 'button', class: 'todo-main', onclick: () => todoSheet(t) },
       el('span', { class: 'todo-title' }, t.title),
@@ -2071,6 +2242,7 @@ function renderPriorityView(box) {
   const withPriority = state.todos.filter(t => t.priority && QUADRANTS[t.quadrant]);
   if (!withPriority.length) {
     box.append(el('div', { class: 'empty' }, el('strong', {}, 'No prioritized to-dos'), 'Turn on “Use priority list” when you add a to-do.'));
+    box.append(todoTrashLink());
     return;
   }
   for (const n of [1, 2, 3, 4]) {
@@ -2082,14 +2254,19 @@ function renderPriorityView(box) {
         el('span', { class: 'todo-prio-q' }, `${q.title} · ${q.desc}`)),
       items.length ? sortTodos(items).map(t => todoRow(t, true)) : el('p', { class: 'todo-empty' }, 'Nothing here.')));
   }
+  box.append(todoTrashLink());
 }
 
 // New / edit a to-do
 function todoSheet(t, presetSection) {
   const draft = t ? { ...t } : { title: '', section: presetSection || '', priority: true, quadrant: null };
   const draw = () => {
-    const title = el('input', { class: 'text-input', type: 'text', maxlength: 80, placeholder: 'e.g. Go to the grocery store', value: draft.title });
-    title.addEventListener('input', () => { draft.title = title.value; });
+    const title = el('textarea', { class: 'text-area todo-title-input', rows: 1, placeholder: 'e.g. Go to the grocery store' });
+    title.value = draft.title;
+    // grows with the text, so long to-dos are fully visible while typing
+    const grow = () => { title.style.height = 'auto'; title.style.height = title.scrollHeight + 'px'; };
+    title.addEventListener('input', () => { draft.title = title.value; grow(); });
+    requestAnimationFrame(grow);
     const sections = todoSectionNames();
     const newSec = el('input', { class: 'text-input', type: 'text', maxlength: 30, placeholder: 'Or type a new section name' });
     const error = el('p', { class: 'form-error hidden' });
@@ -2099,10 +2276,12 @@ function todoSheet(t, presetSection) {
       if (newSec.value.trim()) draft.section = newSec.value.trim();
       if (!draft.title) { error.textContent = 'Give the to-do a name.'; error.classList.remove('hidden'); return; }
       if (draft.priority && !QUADRANTS[draft.quadrant]) { error.textContent = 'Pick a quadrant, or turn off the priority list.'; error.classList.remove('hidden'); return; }
-      if (draft.section && !state.todoSections.includes(draft.section)) state.todoSections.push(draft.section);
-      if (t) Object.assign(t, draft, { quadrant: draft.priority ? draft.quadrant : null });
-      else state.todos.push({ id: uid(), title: draft.title, section: draft.section, priority: draft.priority, quadrant: draft.priority ? draft.quadrant : null, done: false, createdAt: Date.now(), doneAt: null });
-      save(); renderTodos(); closeSheet();
+      todoChange(() => {
+        if (draft.section && !state.todoSections.includes(draft.section)) state.todoSections.push(draft.section);
+        if (t) Object.assign(t, draft, { quadrant: draft.priority ? draft.quadrant : null });
+        else state.todos.push({ id: uid(), title: draft.title, section: draft.section, priority: draft.priority, quadrant: draft.priority ? draft.quadrant : null, done: false, createdAt: Date.now(), doneAt: null });
+      });
+      closeSheet();
       toast(t ? 'To-do updated' : 'To-do added');
     };
 
@@ -2137,9 +2316,9 @@ function todoSheet(t, presetSection) {
       t ? el('button', {
         class: 'sheet-btn danger',
         onclick: () => {
-          const i = state.todos.indexOf(t);
-          state.todos.splice(i, 1); save(); renderTodos(); closeSheet();
-          toast('To-do deleted', () => { state.todos.splice(i, 0, t); save(); renderTodos(); });
+          todoChange(() => trashTodo(t, 'deleted'));
+          closeSheet();
+          toast('Moved to Recently deleted', todoUndo);
         },
       }, 'Delete to-do') : null,
       el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
@@ -2154,8 +2333,8 @@ function newSectionSheet() {
   const add = () => {
     const name = input.value.trim();
     if (!name) return;
-    if (!state.todoSections.includes(name)) state.todoSections.push(name);
-    save(); renderTodos(); closeSheet();
+    if (!state.todoSections.includes(name)) todoChange(() => state.todoSections.push(name));
+    closeSheet();
   };
   input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
   openSheet(el('h3', {}, 'New section'), input, el('button', { class: 'sheet-btn primary', onclick: add }, 'Add section'), el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'));
@@ -2171,27 +2350,22 @@ function sectionMenu(name) {
       class: 'sheet-btn primary',
       onclick: () => {
         const next = input.value.trim();
-        if (next && next !== name) {
+        if (next && next !== name) todoChange(() => {
           state.todoSections = state.todoSections.map(s => (s === name ? next : s)).filter((s, i, a) => a.indexOf(s) === i);
           state.todos.forEach(t => { if (t.section === name) t.section = next; });
-          save(); renderTodos();
-        }
+        });
         closeSheet();
       },
     }, 'Save name'),
     el('button', {
       class: 'sheet-btn danger',
       onclick: () => {
-        const items = state.todos.filter(t => t.section === name);
-        const idx = state.todoSections.indexOf(name);
-        state.todoSections = state.todoSections.filter(s => s !== name);
-        items.forEach(t => { t.section = ''; });
-        save(); renderTodos(); closeSheet();
-        toast(`Removed section ${name}`, () => {
-          state.todoSections.splice(Math.max(0, idx), 0, name);
-          items.forEach(t => { t.section = name; });
-          save(); renderTodos();
+        todoChange(() => {
+          state.todoSections = state.todoSections.filter(s => s !== name);
+          state.todos.forEach(t => { if (t.section === name) t.section = ''; });
         });
+        closeSheet();
+        toast(`Removed section ${name}`, todoUndo);
       },
     }, 'Remove section (keeps its to-dos)'),
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
@@ -2203,6 +2377,8 @@ $('#todo-view').addEventListener('click', e => {
   todoView = b.dataset.v; renderTodos();
 });
 $('#btn-todo-add').addEventListener('click', () => todoSheet(null));
+$('#btn-todo-undo').addEventListener('click', todoUndo);
+$('#btn-todo-redo').addEventListener('click', todoRedo);
 
 /* =========================================================
    Sheet + toast

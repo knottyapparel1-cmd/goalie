@@ -1327,9 +1327,14 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
 .tally-list.list .card.wide-count .card-count.small,
 .tally-list.list .card.wide-count .card-count.tiny { font-size: 26px; }
 
-/* ---------- Header: settings gear beside the edit pencil ---------- */
-.header-settings { position: absolute; left: 54px; }
-.today-header.editing .header-settings { display: none; }
+/* ---------- Header: settings + help on the left, edit + layout on the right ---------- */
+.header-left { position: absolute; left: 12px; display: flex; align-items: center; }
+.header-left .muted { color: #c4c8cf; font-size: 26px; font-weight: 700; }
+.today-header .edit-toggle, .today-header .edit-cancel { position: static; }
+.today-header.editing .header-settings,
+.today-header.editing #btn-help,
+.today-header.editing .layout-toggle { display: none; }
+.today-header.editing h1 { visibility: visible; }
 
 /* ---------- Groups picker (multi-select) ---------- */
 .sheet .group-pick { display: flex; align-items: center; gap: 12px; text-align: left; }
@@ -1416,3 +1421,17 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
 html[data-theme="dark"] .p-high .todo-tag, html[data-theme="dark"] .todo-tag.p-high { background: #4a1d21; color: #ffb3b6; }
 html[data-theme="dark"] .p-medium .todo-tag, html[data-theme="dark"] .todo-tag.p-medium { background: #4a3510; color: #ffd38a; }
 html[data-theme="dark"] .p-low .todo-tag, html[data-theme="dark"] .todo-tag.p-low { background: #14304a; color: #a9d6f5; }
+
+/* ---------- To-do: undo/redo beside the title, Recently deleted, long titles ---------- */
+.todo-head { display: flex; align-items: center; gap: 2px; }
+.todo-head h1 { margin-right: 8px; }
+.todo-hist { color: var(--accent); min-width: 38px; }
+.todo-hist:disabled { color: var(--line); }
+.todo-title { white-space: pre-wrap; }
+.todo-title-input { resize: none; overflow: hidden; min-height: 48px; line-height: 1.35; }
+.todo-row.leaving { opacity: .45; transition: opacity .4s ease; }
+.todo-trash-link { display: block; margin: 18px auto 8px; padding: 8px 14px; font-size: 14px; font-weight: 700; color: var(--muted); letter-spacing: .02em; }
+.trash-dot.todo-dot { display: grid; place-items: center; width: 18px; height: 18px; border: 2px solid var(--muted); background: transparent; }
+.trash-dot.todo-dot svg { width: 12px; height: 12px; }
+.todo-trash-name { white-space: normal; overflow-wrap: anywhere; }
+.sheet .trash-list { margin: 4px 0 12px; }
