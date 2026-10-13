@@ -2639,6 +2639,8 @@ $('#sheet-backdrop').addEventListener('click', closeSheet);
   let startY = null, dy = 0, dragging = false;
   sheet.addEventListener('touchstart', e => {
     if (!sheet.classList.contains('show') || sheet.scrollTop > 0) { startY = null; return; }
+    // Date wheels and scrolling lists inside the sheet handle their own up/down swipes.
+    if (e.target.closest('.wheel, .hist')) { startY = null; return; }
     startY = e.touches[0].clientY; dy = 0; dragging = false;
   }, { passive: true });
   sheet.addEventListener('touchmove', e => {
