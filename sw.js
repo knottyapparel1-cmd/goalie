@@ -6,17 +6,23 @@ const ASSETS = [
   './styles.css',
   './app.js',
   './manifest.webmanifest',
+  './fonts/outfit-latin.woff2',
+  './fonts/outfit-latin-ext.woff2',
   './icons/goalie-bar-192.png',
   './icons/goalie-bar-512.png',
   './icons/goalie-bar-touch-180.png',
   './icons/goalie-bar-maskable-512.png',
 ];
 
+// A new version downloads its files in the background, then WAITS: Goalie keeps running the version
+// you have until you choose Update now (or the time you scheduled), which sends 'skipWaiting'.
 self.addEventListener('install', event => {
   // cache: 'reload' skips the browser's HTTP cache, so a new version never stores stale files.
-  event.waitUntil(caches.open(CACHE)
-    .then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' }))))
-    .then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))));
+});
+
+self.addEventListener('message', event => {
+  if (event.data === 'skipWaiting') self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
@@ -27,36 +33,24 @@ self.addEventListener('activate', event => {
   );
 });
 
-// App files: always ask the server for the latest version (cache: 'no-cache' revalidates instead of
-// reusing GitHub's 10-minute HTTP cache), falling back to the saved copy only when offline.
-// Fonts: cache first.
+// App files come from this version's saved copy (works offline, and never changes underneath you);
+// anything missing is fetched and saved. version.json always goes to the server, so the app can
+// tell when a newer version exists.
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  const isFont = url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
-
-  if (isFont) {
-    event.respondWith(
-      caches.match(req).then(hit => hit || fetch(req).then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy));
-        return res;
-      }))
-    );
-    return;
-  }
-
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.endsWith('/version.json')) return; // straight to the network
 
   event.respondWith(
-    fetch(req, { cache: 'no-cache' })
-      .then(res => {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(req, copy));
-        return res;
-      })
-      .catch(() => caches.match(req, { ignoreSearch: true }).then(hit => hit || caches.match('./index.html')))
+    caches.open(CACHE).then(cache =>
+      cache.match(req, { ignoreSearch: true }).then(hit => hit ||
+        fetch(req).then(res => {
+          if (res.ok) cache.put(req, res.clone()); // never save an error page
+          return res;
+        }).catch(() => (req.mode === 'navigate' ? cache.match('./index.html') : Response.error())))
+    )
   );
 });
 

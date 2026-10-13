@@ -1,3 +1,15 @@
+/* Outfit, saved with the app (no request to Google; works offline). Variable font: one file per alphabet. */
+@font-face {
+  font-family: 'Outfit'; font-style: normal; font-weight: 100 900; font-display: block;
+  src: url(fonts/outfit-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Outfit'; font-style: normal; font-weight: 100 900; font-display: block;
+  src: url(fonts/outfit-latin-ext.woff2) format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 :root {
   --navy: #1c2a4a;
   --muted: #9aa0a8;
@@ -90,8 +102,6 @@ button {
   display: flex;
   align-items: center;
 }
-.header-actions .muted { color: #c4c8cf; font-size: 26px; font-weight: 700; }
-.divider { width: 1.5px; height: 30px; background: var(--line); margin: 0 4px; }
 
 .tally-list {
   flex: 1;
@@ -560,7 +570,6 @@ button {
   color: rgba(255,255,255,.6);
   white-space: nowrap;
 }
-.x-labels.sparse span { overflow: visible; }
 
 .scatter {
   position: relative;
@@ -579,8 +588,6 @@ button {
   border-radius: 50%;
   background: #fff;
 }
-.scatter-labels { display: flex; justify-content: space-between; margin-top: 10px; }
-.scatter-labels span { font-size: 14px; font-weight: 700; color: rgba(255,255,255,.6); width: 0; display: flex; justify-content: center; white-space: nowrap; }
 
 .stats-bar {
   display: flex;
@@ -922,16 +929,6 @@ button {
 .stat-card .bar-col.current .bar-track { box-shadow: 0 0 0 1.5px var(--stat-soft); }
 
 /* ---------- Line chart ---------- */
-.axis-unit {
-  margin: 0 0 8px 14px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .1em;
-  color: var(--stat-soft);
-  display: flex;
-  gap: 12px;
-}
-.axis-goal { letter-spacing: .04em; text-transform: uppercase; }
 .stat-card .goal-line {
   stroke: var(--stat-soft);
   stroke-width: 1.5;
@@ -1066,7 +1063,6 @@ button {
   text-align: center;
 }
 .help-word { font-size: 30px; font-weight: 800; letter-spacing: .06em; }
-.help-tag { margin-top: 6px; font-size: 17px; font-weight: 700; color: #8cd0ff; }
 .sheet .help-hero p { margin: 10px 0 0; color: rgba(255, 255, 255, .85); font-size: 15px; line-height: 1.5; }
 
 /* ---------- Layout toggle: shows the layout you'll switch to ---------- */
@@ -1090,7 +1086,6 @@ button {
 .stat-card { padding: 14px 14px 12px 10px; border-radius: 20px; }
 .stat-card h3 { margin-left: 8px; font-size: 20px; }
 .stat-sub { margin: 4px 0 10px 8px; font-size: 12px; letter-spacing: .06em; }
-.axis-unit { margin: 0 0 6px 8px; }
 .stat-card .x-labels { margin-top: 6px; }
 .stat-card .x-labels span { font-size: 12px; }
 #screen-stats .stats-bar { padding-top: 6px; }
@@ -1118,8 +1113,6 @@ button {
 .color-target { flex: 1; flex-direction: column; gap: 8px; }
 .color-target button { width: 100%; height: 42px; }
 #color-preview { flex: none; width: 118px; }
-.preview-card { pointer-events: none; padding: 10px 8px; border-radius: 18px; }
-.preview-card .card-count { margin: 2px 0 0; }
 .text-auto {
   display: inline-flex; align-items: center; gap: 6px;
   margin-bottom: 12px; padding: 8px 14px; border-radius: 999px;
@@ -1222,8 +1215,7 @@ html[data-theme="dark"] .help-hero p { color: rgba(255, 255, 255, .9); }
 }
 
 /* ---------- Status bar area ----------
-   The app now draws under the iPhone clock/battery (black-translucent), which iOS always shows in white,
-   so that strip gets a dark fill: Goalie navy in light mode, the page color in dark mode. */
+   iPhone draws its own status bar ("default" style), so this strip just matches the page color. */
 :root { --statusbar: var(--bg); }   /* light mode: same white as the page */
 html[data-theme="dark"] { --statusbar: var(--bg); }
 .status-bg {
@@ -1276,7 +1268,6 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
   pointer-events: none;
   z-index: 1;
 }
-.y-axis .y-goal { font-weight: 800; }
 
 /* ---------- Stats charts: bar and line cards share the same dimensions ---------- */
 .stat-card .y-axis { width: 34px; }
@@ -1345,14 +1336,7 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
 }
 .sheet .group-pick.selected .pick-box { background: var(--fill); border-color: var(--fill); }
 
-/* ---------- Target date ---------- */
-.due-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-.due-label { font-size: 14px; font-weight: 600; color: var(--navy); }
-.due-btn {
-  padding: 9px 14px; border-radius: 10px; border: 1.5px solid var(--line);
-  font-size: 13px; font-weight: 800; letter-spacing: .04em; color: var(--accent);
-}
-.due-btn.on { background: var(--soft); border-color: var(--soft); color: var(--navy); }
+/* ---------- Target date on cards ---------- */
 .card-due { letter-spacing: .06em; }
 
 /* ---------- Check-off goals: ✗ and ✓ buttons ---------- */
@@ -1505,3 +1489,7 @@ html.fonts-loading body { visibility: hidden; }
 .seg.pills.stack button { width: 100%; height: auto; min-height: 48px; padding: 10px 14px; line-height: 1.3; }
 .log-mode:empty { display: none; }
 .log-mode { margin: 0 0 4px; }
+
+/* ---------- Filter bar: six buttons (ALL … YEARLY, DATE) on one line ---------- */
+.filter-bar button { font-size: 10.5px; letter-spacing: .02em; padding: 0 2px; }
+@media (max-width: 360px) { .filter-bar button { font-size: 9.5px; letter-spacing: 0; padding: 0 1px; } }

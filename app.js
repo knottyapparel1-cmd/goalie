@@ -86,25 +86,62 @@ const DEFAULT_STATE = () => ({
 
 const TRASH_DAYS = 30;
 
-let state = load();
+/* Storage: every save goes to localStorage (small, ~5 MB, read instantly at start) and to IndexedDB
+   (much larger). At start the newer of the two wins, so data keeps saving after localStorage fills. */
+const storage = { synced: false, idbWorks: false, damagedKey: null };
+let idbPromise = null;
+function idb() {
+  if (!idbPromise) {
+    idbPromise = new Promise((resolve, reject) => {
+      if (!window.indexedDB) { reject(new Error('no indexedDB')); return; }
+      const req = indexedDB.open('goalie', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('kv');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  return idbPromise;
+}
+function idbRun(mode, fn) {
+  return idb().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction('kv', mode);
+    const req = fn(tx.objectStore('kv'));
+    tx.oncomplete = () => resolve(req.result);
+    tx.onerror = tx.onabort = () => reject(tx.error);
+  }));
+}
+const idbGet = key => idbRun('readonly', s => s.get(key));
+const idbSet = (key, value) => idbRun('readwrite', s => s.put(value, key));
 
-// One-time: cards used to default to showing "last time"; show the measurement instead.
+// Saved data that couldn't be read is kept (localStorage + IndexedDB) and offered in Settings.
+function keepDamagedCopy(raw) {
+  const key = `${STORE_KEY}.damaged-${Date.now()}`;
+  storage.damagedKey = key;
+  try { localStorage.setItem(key, raw); } catch (e) { /* full: the IndexedDB copy below still works */ }
+  idbSet(key, raw).catch(() => {});
+}
+
+let state = load();
+migrate();
+
 // A goal can be in several groups (t.groups). Older data had a single t.group.
 function groupsOf(t) { return Array.isArray(t.groups) ? t.groups : (t.group ? [t.group] : []); }
 function setGroups(t, list) {
   t.groups = [...new Set(list.map(g => String(g).trim()).filter(Boolean))];
   t.group = t.groups[0] || ''; // kept for older backups
 }
-state.tallies.forEach(t => { if (!Array.isArray(t.groups)) setGroups(t, groupsOf(t)); });
 
-if (!state.settings.unitLabelMigrated) {
-  state.tallies.forEach(t => { if (t.bottomMode === 'last') t.bottomMode = 'unit'; });
-  state.settings.unitLabelMigrated = true;
-  save();
-}
+// Bring older saved data up to date, and clear out Recently Deleted items past 30 days.
+function migrate() {
+  state.tallies.forEach(t => { if (!Array.isArray(t.groups)) setGroups(t, groupsOf(t)); });
 
-// Permanently drop goals that have been in Recently Deleted too long.
-{
+  // One-time: cards used to default to showing "last time"; show the measurement instead.
+  if (!state.settings.unitLabelMigrated) {
+    state.tallies.forEach(t => { if (t.bottomMode === 'last') t.bottomMode = 'unit'; });
+    state.settings.unitLabelMigrated = true;
+    save();
+  }
+
   const cutoff = Date.now() - TRASH_DAYS * 86400000;
   const kept = state.trash.filter(item => item.deletedAt >= cutoff);
   if (kept.length !== state.trash.length) { state.trash = kept; save(); }
@@ -118,31 +155,46 @@ if (!state.settings.unitLabelMigrated) {
   if (finished.length || keptTodos.length !== state.todoTrash.length) { state.todoTrash = keptTodos; save(); }
 }
 
+// Fill in anything missing from saved (or imported) data.
+function normalizeState(data) {
+  const base = DEFAULT_STATE();
+  return {
+    tallies: Array.isArray(data.tallies) ? data.tallies : [],
+    entries: Array.isArray(data.entries) ? data.entries : [],
+    trash: Array.isArray(data.trash) ? data.trash : [],
+    todos: Array.isArray(data.todos) ? data.todos : [],
+    todoSections: Array.isArray(data.todoSections) ? data.todoSections : [],
+    todoTrash: Array.isArray(data.todoTrash) ? data.todoTrash : [],
+    settings: { ...base.settings, ...(data.settings || {}) },
+    savedAt: data.savedAt || 0,
+  };
+}
+
+// Quick start from localStorage; the bigger IndexedDB copy is checked right after (see syncStorage).
 function load() {
+  let raw = null;
+  try { raw = localStorage.getItem(STORE_KEY); } catch (e) { return DEFAULT_STATE(); }
+  if (!raw) return DEFAULT_STATE();
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return DEFAULT_STATE();
-    const data = JSON.parse(raw);
-    const base = DEFAULT_STATE();
-    return {
-      tallies: Array.isArray(data.tallies) ? data.tallies : [],
-      entries: Array.isArray(data.entries) ? data.entries : [],
-      trash: Array.isArray(data.trash) ? data.trash : [],
-      todos: Array.isArray(data.todos) ? data.todos : [],
-      todoSections: Array.isArray(data.todoSections) ? data.todoSections : [],
-      todoTrash: Array.isArray(data.todoTrash) ? data.todoTrash : [],
-      settings: { ...base.settings, ...(data.settings || {}) },
-    };
+    return normalizeState(JSON.parse(raw));
   } catch (e) {
+    // Unreadable: keep a copy instead of letting the next save overwrite it.
+    keepDamagedCopy(raw);
     return DEFAULT_STATE();
   }
 }
 
 function save() {
+  // Only stamp the time once the IndexedDB copy has been checked; saves before that (start-up
+  // tidying) must not make a blank or older state look newer than the copy there.
+  if (storage.synced) state.savedAt = Date.now();
+  const json = JSON.stringify(state);
+  if (storage.synced) idbSet('state', json).catch(() => {});
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORE_KEY, json);
   } catch (e) {
-    toast('Could not save — storage full or blocked');
+    // Full: fine while the IndexedDB copy is working (it holds far more); otherwise warn.
+    if (!storage.idbWorks) toast('Could not save — storage full or blocked');
   }
 }
 
@@ -203,10 +255,27 @@ function fmt(n) {
    ========================================================= */
 function entriesFor(id) { return state.entries.filter(e => e.tallyId === id); }
 
+// Whether a log at this time counts toward the goal: it must be on one of the goal's measured
+// weekdays, and (by-date goals) between the start of the current run and the end of the date.
+function countsToward(t, ts) {
+  const days = measuredWeekdays(t);
+  if (days.length < 7 && !days.includes(new Date(ts).getDay())) return false;
+  if (byDate(t)) return ts >= (t.countFrom || 0) && ts < dueEndMs(t);
+  return true;
+}
+function countedEntries(t) { return entriesFor(t.id).filter(e => countsToward(t, e.ts)); }
+
 function currentCount(t) {
   const from = periodStart(t.reset).getTime();
-  return entriesFor(t.id).reduce((s, e) => (e.ts >= from ? s + e.value : s), 0);
+  return countedEntries(t).reduce((s, e) => (e.ts >= from ? s + e.value : s), 0);
 }
+
+// Today isn't one of the goal's measured weekdays.
+const offDay = t => !measuredWeekdays(t).includes(new Date().getDay());
+
+// By-date goals: the date has passed (the goal is locked with its result).
+const dueEndMs = t => addDays(fromYmd(t.dueDate), 1).getTime();
+const goalEnded = t => byDate(t) && Date.now() >= dueEndMs(t);
 
 function lastEntry(id) {
   let last = null;
@@ -223,7 +292,10 @@ function hasActivityToday(id) {
 // replaceDay: remove what was already logged that day first (Settings → When logging custom dates).
 function logEntry(t, value, ts = Date.now(), replaceDay = false) {
   if (isCheck(t)) {
-    if (ts >= periodStart(t.reset).getTime() && currentCount(t) >= 1) { toast(`${t.name} is already checked off`); return; }
+    // One check-off per period, for past days as well as today.
+    const period = periodStart(t.reset, new Date(ts)).getTime();
+    const already = countedEntries(t).some(e => periodStart(t.reset, new Date(e.ts)).getTime() === period);
+    if (already && !replaceDay) { toast(ts >= periodStart(t.reset).getTime() ? `${t.name} is already checked off` : `${t.name} was already checked off then`); return; }
     value = 1;
   }
   entryChange(t.id, () => {
@@ -260,6 +332,11 @@ function entryUndo(id) {
   h.forward.push(goalEntriesCopy(id));
   putGoalEntries(id, h.back.pop());
   return true;
+}
+// After Import, Delete all data or edit-mode CANCEL the old undo steps no longer match the data.
+function clearUndoHistory({ todos = true } = {}) {
+  for (const id of Object.keys(entryHistory)) delete entryHistory[id];
+  if (todos) { todoHistory.back = []; todoHistory.forward = []; }
 }
 function entryRedo(id) {
   const h = historyOf(id);
@@ -360,6 +437,7 @@ function drawToday(bumpId) {
   });
 
   if (!state.tallies.length) {
+    renderGroupChips([], ''); // no goals left: hide the old group chips
     list.append(el('div', { class: 'empty' },
       el('strong', {}, 'No goals yet'),
       'Tap + below to set your first goal.'));
@@ -377,7 +455,9 @@ function drawToday(bumpId) {
     const where = groupFilter === NO_GROUP ? ' without a group' : groupFilter ? ` in ${groupFilter}` : '';
     list.append(el('div', { class: 'empty' },
       el('strong', {}, filter === 'all' ? `No goals${where}` : `No ${FILTER_NAMES[filter]} goals${where}`),
-      filter === 'all' ? 'Add one with + or pick a different group.' : `Goals that reset every ${filter} show up here.`));
+      filter === 'all' ? 'Add one with + or pick a different group.'
+        : filter === 'date' ? 'Goals with a custom end date (PER → BY CUSTOM DATE) show up here.'
+        : `Goals that reset every ${filter} show up here.`));
     return;
   }
 
@@ -550,7 +630,7 @@ function tallyCard(t, bump) {
   const count = currentCount(t);
   const countText = t.target ? `${num(t, count)}/${num(t, t.target)}` : num(t, count);
   const sizeClass = countText.length > 7 ? 'tiny' : countText.length > 5 ? 'small' : '';
-  const tracksToday = !t.days || t.days.includes(new Date().getDay());
+  const tracksToday = !offDay(t);
 
   let bottom;
   if (t.bottomMode === 'custom') bottom = t.bottomText || '';
@@ -565,6 +645,7 @@ function tallyCard(t, bump) {
     class: `card ${cardColorClass(t)}${tracksToday ? '' : ' off-day'}${bump ? ' bump' : ''}${!isCheck(t) && countText.length > 6 ? ' wide-count' : ''}`,
     style: cardColorStyle(t),
     role: 'button',
+    tabindex: '0',
     'data-id': t.id,
     'aria-label': editMode
       ? `${t.name}. Drag to reorder, tap to edit.`
@@ -572,7 +653,8 @@ function tallyCard(t, bump) {
   },
   el('div', { class: 'card-top' },
     el('div', { class: 'card-name' + nameSizeClass(t.name) }, goalTitle(t, goalReached(t, count))),
-    el('div', { class: 'card-period' }, byDate(t) ? `BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}` : PERIOD_LABEL[t.reset] || 'TODAY',
+    el('div', { class: 'card-period' }, goalEnded(t) ? `ENDED ${goalReached(t, count) ? '✓' : '✗'}`
+      : byDate(t) ? `BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}` : PERIOD_LABEL[t.reset] || 'TODAY',
       t.dueDate && !byDate(t) ? el('span', { class: 'card-due' }, `· BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}`) : null,
       goalBadge(t, count))),
   el('div', { class: `card-count ${sizeClass}` }, isCheck(t) ? checkMark(count >= 1) : countText),
@@ -778,7 +860,11 @@ function attachPress(node, onTapFn, onLongFn) {
   node.addEventListener('pointermove', e => {
     if (timer && (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10)) cancel();
   });
-  node.addEventListener('pointerup', () => { if (timer) { cancel(); if (!fired) onTapFn(); } });
+  let lastPointer = 0;
+  node.addEventListener('pointerup', () => { lastPointer = Date.now(); if (timer) { cancel(); if (!fired) onTapFn(); } });
+  // VoiceOver and keyboards activate with a click (or Enter/Space) and no finger press first.
+  node.addEventListener('click', () => { if (Date.now() - lastPointer > 700) onTapFn(); });
+  node.addEventListener('keydown', e => { if (e.target === node && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onTapFn(); } });
   node.addEventListener('pointercancel', cancel);
   node.addEventListener('pointerleave', cancel);
   node.addEventListener('contextmenu', e => e.preventDefault());
@@ -787,8 +873,8 @@ function attachPress(node, onTapFn, onLongFn) {
 function lastInPeriod(t) {
   const from = periodStart(t.reset).getTime();
   let last = null;
-  for (const e of state.entries) {
-    if (e.tallyId === t.id && e.ts >= from && (!last || e.ts > last.ts)) last = e;
+  for (const e of countedEntries(t)) {
+    if (e.ts >= from && (!last || e.ts > last.ts)) last = e;
   }
   return last;
 }
@@ -822,14 +908,71 @@ function cardFoot(t, label) {
     return el('div', { class: 'card-foot is-check' }, x, el('div', { class: 'card-bottom' }, label), ok);
   }
   return el('div', { class: 'card-foot' },
-    btn('−', 'minus', () => takeBack(t), !lastInPeriod(t)),
+    btn('−', 'minus', () => takeBack(t), !lastInPeriod(t) || goalEnded(t)),
     el('div', { class: 'card-bottom' }, label),
     btn('+', 'plus', () => onTap(t)));
 }
 
 function onTap(t) {
+  if (goalEnded(t)) { repeatSheet(t); return; }
+  if (offDay(t)) {
+    // Logs on days the goal doesn't measure don't count toward it; check before logging one.
+    openSheet(
+      el('h3', {}, `${DAY_FULL[new Date().getDay()]} isn't a measured day`),
+      el('p', {}, `${t.name} is measured on ${daysSummary(measuredWeekdays(t))}. Anything logged today is kept in its history but won't count toward the goal.`),
+      el('button', { class: 'sheet-btn primary', onclick: () => { closeSheet(); setTimeout(() => logNow(t), 300); } }, 'Log anyway'),
+      el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
+    );
+    return;
+  }
+  logNow(t);
+}
+function logNow(t) {
   if (t.logMode === 'custom') promptValue(t);
   else logEntry(t, t.defaultCount || 1);
+}
+const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// A by-date goal whose date has passed: show how it went and offer to run it again.
+function repeatSheet(t) {
+  const total = countedEntries(t).reduce((s, e) => s + e.value, 0);
+  const reached = goalReached(t, total);
+  const now = new Date();
+  // suggest the same length as last time, starting today
+  const lastStart = startOfDay(new Date(t.countFrom || t.createdAt || Date.now()));
+  const length = Math.max(1, Math.round((fromYmd(t.dueDate) - lastStart) / DAY_MS));
+  const wheels = dateWheels(addDays(startOfDay(now), length), { minYear: now.getFullYear(), maxYear: now.getFullYear() + 10 });
+  const error = el('p', { class: 'form-error hidden' });
+  t.endAsked = t.dueDate; save();
+  openSheet(
+    el('h3', {}, `${t.name} ended ${reached ? '✓' : '✗'}`),
+    el('p', {}, isCheck(t)
+      ? `${reached ? 'You did it' : 'Not checked off'} by ${longDate(t.dueDate)}.`
+      : `${reached ? 'You reached your goal' : 'You didn’t reach your goal'}: ${amountText(t, total)} of ${amountText(t, t.target || 0)} by ${longDate(t.dueDate)}.`),
+    el('p', {}, 'Do you want to repeat this goal? Pick the new date; counting starts over today.'),
+    wheels.node,
+    error,
+    el('button', {
+      class: 'sheet-btn primary',
+      onclick: () => {
+        const d = wheels.get();
+        if (d < startOfDay(new Date())) { error.textContent = 'Pick today or a later date.'; error.classList.remove('hidden'); return; }
+        t.countFrom = startOfDay(new Date()).getTime();
+        t.dueDate = toDateInput(d);
+        t.endAsked = '';
+        save(); renderToday(); closeSheet();
+        toast(`${t.name} repeats until ${longDate(t.dueDate)}`);
+      },
+    }, 'Repeat goal'),
+    el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Not now'),
+  );
+}
+
+// Once per ended goal, ask whether to repeat it (when nothing else is open).
+function askAboutEndedGoals() {
+  if (document.querySelector('.screen.modal.active, .sheet.show')) return;
+  const t = state.tallies.find(x => goalEnded(x) && x.endAsked !== x.dueDate);
+  if (t) repeatSheet(t);
 }
 
 function promptValue(t) {
@@ -1050,10 +1193,12 @@ function pickBucket(t, r, i) {
   daySheet(t, day);
 }
 
-const FILTER_NAMES = { all: 'all', day: 'daily', week: 'weekly', month: 'monthly', year: 'yearly' };
+const FILTER_NAMES = { all: 'all', day: 'daily', week: 'weekly', month: 'monthly', year: 'yearly', date: 'by-date' };
 
+// DATE shows the By Custom Date goals; the others match how often the goal resets.
 function matchesFilter(t, filter) {
-  return filter === 'all' || t.reset === filter;
+  if (filter === 'all') return true;
+  return filter === 'date' ? byDate(t) : t.reset === filter;
 }
 
 $('#goal-filter').addEventListener('click', e => {
@@ -1075,6 +1220,7 @@ $('#btn-edit-cancel').addEventListener('click', () => {
     state.trash = snap.trash;
     EDIT_SETTINGS.forEach(k => { state.settings[k] = snap.settings[k]; });
     save();
+    clearUndoHistory({ todos: false });
   }
   setEditMode(false);
   toast('Edits canceled');
@@ -1093,8 +1239,8 @@ $('#btn-help').addEventListener('click', () => {
     el('h3', {}, 'How it works'),
     el('ol', {},
       el('li', {}, 'Tap + at the bottom to set a goal: anything you want to do more of or cut back on.'),
-      el('li', {}, 'Tap a goal card (or its +) to check in. Use − to take one back. Hold a card for history and more.'),
-      el('li', {}, 'Tap the pencil (top left) to reorder goals, delete them, or remove group names.'),
+      el('li', {}, 'Tap a goal card (or its +) to check in. Use − to take one back. Hold a card to log a custom amount or date, undo or redo, edit or delete it.'),
+      el('li', {}, 'Tap the pencil (top right) to reorder goals, drag the group chips to reorder groups, delete goals, or remove group names.'),
       el('li', {}, 'Tap the chart icon to see your day, week, month and year. Tap any bar or point to view or edit that day.')),
     el('h3', {}, 'Install on iPhone'),
     el('ol', {},
@@ -1105,7 +1251,7 @@ $('#btn-help').addEventListener('click', () => {
   );
 });
 
-$('#btn-add').addEventListener('click', () => { editMode = false; openForm(null); });
+$('#btn-add').addEventListener('click', () => { if (editMode) setEditMode(false); openForm(null); });
 $('#btn-todo').addEventListener('click', () => {
   if (editMode) setEditMode(false);
   renderTodos();
@@ -1133,6 +1279,7 @@ function blankForm() {
 
 function openForm(t) {
   editingId = t ? t.id : null;
+  unitChangeOk = false;
   autoCustom = false;
   colorTarget = 'goal';
   form = t ? { ...blankForm(), ...JSON.parse(JSON.stringify(t)) } : blankForm();
@@ -1394,7 +1541,13 @@ $$('#create-form .seg').forEach(seg => seg.addEventListener('click', e => {
     case 'logMode': form.logMode = v; autoCustom = false; break;
     case 'bottomMode': form.bottomMode = v; break;
     case 'direction': form.direction = v; break;
-    case 'unit':
+    case 'unit': {
+      // Minutes ↔ hours: keep the same amounts (30 minutes becomes 0.5 hours).
+      const k = unitFactor(form.unit, v);
+      if (k && k !== 1) {
+        if (form.target != null) { form.target = +(form.target * k).toFixed(4); $('#f-goal').value = fmt(form.target); }
+        if (isFinite(form.defaultCount)) form.defaultCount = +(form.defaultCount * k).toFixed(4);
+      }
       form.unit = v;
       if (v === 'check') {
         // A check-off has no number: one tap marks it done for the period.
@@ -1412,6 +1565,7 @@ $$('#create-form .seg').forEach(seg => seg.addEventListener('click', e => {
         autoCustom = false;
       }
       break;
+    }
   }
   syncForm();
 }));
@@ -1550,7 +1704,10 @@ function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
       clearTimeout(timer);
       timer = setTimeout(() => onPick(i), 90);
     });
-    col.setIndex = i => { col.scrollTop = i * ROW; mark(i); };
+    let placed = false;
+    col.setIndex = i => { col.scrollTop = i * ROW; mark(i); placed = true; };
+    // the row in the middle right now (even mid-spin), so a quick Save never gets the previous value
+    col.index = () => (placed ? Math.max(0, Math.min(labels.length - 1, Math.round(col.scrollTop / ROW))) : index);
     col.items = items;
     mark(index);
     setTimeout(() => col.setIndex(index), 0); // once it's on the page
@@ -1569,7 +1726,10 @@ function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
   fixDay();
   return {
     node: el('div', { class: 'wheels' }, monthWheel, dayWheel, yearWheel),
-    get: () => new Date(y, m, Math.min(d, daysInMonth(y, m))),
+    get: () => {
+      const yy = years[yearWheel.index()], mm = monthWheel.index(), dd = dayWheel.index() + 1;
+      return new Date(yy, mm, Math.min(dd, daysInMonth(yy, mm)));
+    },
   };
 }
 
@@ -1589,9 +1749,38 @@ $('#btn-reminder').addEventListener('click', () => {
 
 $('#create-form').addEventListener('submit', e => e.preventDefault());
 
+// Multiply amounts by this when switching units (null: no conversion possible).
+function unitFactor(from, to) {
+  if (from === to) return 1;
+  if (from === 'minutes' && to === 'hours') return 1 / 60;
+  if (from === 'hours' && to === 'minutes') return 60;
+  return null;
+}
+let unitChangeOk = false; // the "change the unit anyway?" warning was accepted for this edit
+
 $('#btn-submit').addEventListener('click', () => {
   validateForm();
   if ($('#btn-submit').disabled) return;
+  // Changing the unit of a goal with history: convert minutes ↔ hours, warn about anything else.
+  const old = editingId && state.tallies.find(t => t.id === editingId);
+  const logged = old ? entriesFor(old.id) : [];
+  const factor = old ? unitFactor(old.unit, form.unit) : 1;
+  if (logged.length && factor == null && !unitChangeOk) {
+    const n = logged.length;
+    openSheet(
+      el('h3', {}, 'Change the unit?'),
+      el('p', {}, form.unit === 'check'
+        ? `${old.name} has ${n} entr${n === 1 ? 'y' : 'ies'}. As a check-off goal, any day (or period) with an entry will count as done.`
+        : `${old.name} has ${n} entr${n === 1 ? 'y' : 'ies'} logged in ${unitLabel(old)}. They keep their numbers, so ${fmt(logged[0].value)} ${unitLabel(old)} becomes ${fmt(logged[0].value)} ${unitLabel(form) || 'of the new unit'}.`),
+      el('button', { class: 'sheet-btn primary', onclick: () => { unitChangeOk = true; closeSheet(); $('#btn-submit').click(); } }, 'Change anyway'),
+      el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Keep editing'),
+    );
+    return;
+  }
+  if (logged.length && factor && factor !== 1) {
+    logged.forEach(e => { e.value = +(e.value * factor).toFixed(6); });
+    delete entryHistory[old.id]; // undo steps were in the old unit
+  }
   const data = {
     ...form,
     name: form.name.trim(),
@@ -1689,6 +1878,11 @@ function niceMax(v) {
 }
 
 function renderStats() {
+  startDayCache = new Map();
+  try { drawStats(); } finally { startDayCache = null; }
+}
+
+function drawStats() {
   const name = (state.settings.name || '').trim();
   $('#stats-title').textContent = name ? `Here are your STATS, ${name}!` : 'Here are your STATS!';
   const r = statsRange();
@@ -1719,7 +1913,7 @@ function renderStats() {
   }
   const shown = state.tallies.filter(t => matchesFilter(t, sf) && matchesGroup(t, sg));
   if (!shown.length) {
-    list.append(el('div', { class: 'empty' }, el('strong', {}, 'No goals here'), 'Pick a different group or ALL at the bottom.'));
+    list.append(el('div', { class: 'empty' }, el('strong', {}, 'No goals here'), 'Pick a different group, or ALL in the filter at the top.'));
     return;
   }
 
@@ -1729,7 +1923,7 @@ function renderStats() {
   const periodWord = statsState.range.toUpperCase();
 
   for (const t of shown) {
-    const entries = entriesFor(t.id).filter(e => e.ts >= startMs && e.ts < endMs);
+    const entries = countedEntries(t).filter(e => e.ts >= startMs && e.ts < endMs);
     const sums = new Array(r.buckets).fill(0);
     const isDay = statsState.range === 'day';
     const active = new Set();
@@ -1766,7 +1960,7 @@ function renderStats() {
       // over when a new period begins.
       values = runningTotals(t, r, sums, lastIdx);
       goal = t.target;
-      caption = t.reset === statsState.range ? 'RUNNING TOTAL' : `RUNNING ${RESET_ADJ[t.reset]} TOTAL`;
+      caption = t.reset === statsState.range || byDate(t) ? 'RUNNING TOTAL' : `RUNNING ${RESET_ADJ[t.reset]} TOTAL`;
     } else if (statsState.range === 'year') {
       // How many goal periods each month counted (tracked days so far, in the goal's own period).
       const counts = sums.map((_, i) => periodsCounted(t, r.start.getFullYear(), i));
@@ -1792,7 +1986,9 @@ function renderStats() {
 const RESET_ADJ = { day: 'DAILY', week: 'WEEKLY', month: 'MONTHLY', year: 'YEARLY' };
 
 function showsRunningTotal(t) {
-  if (isCheck(t) || !(t.target > 0) || !(t.reset in RESET_ADJ)) return false;
+  if (isCheck(t) || !(t.target > 0)) return false;
+  if (byDate(t)) return true; // by-date goals: everything so far, climbing toward the goal
+  if (!(t.reset in RESET_ADJ)) return false;
   const range = statsState.range;
   if (range === 'year') return t.reset === 'year'; // weekly/monthly goals on Year use per-month averages and totals
   return t.reset !== 'day' || range === 'day'; // daily goals on Week/Month compare each day to the goal instead
@@ -1803,6 +1999,7 @@ function goalPeriodStart(reset, d) {
   if (reset === 'week') return startOfWeek(d);
   if (reset === 'month') return new Date(d.getFullYear(), d.getMonth(), 1);
   if (reset === 'year') return new Date(d.getFullYear(), 0, 1);
+  if (reset === 'never') return new Date(0); // by-date goals never start over
   return startOfDay(d);
 }
 
@@ -1814,7 +2011,7 @@ function runningTotals(t, r, sums, lastIdx) {
     : addDays(r.start, i));
   // anything logged earlier in the first step's period, before this chart starts
   const firstPeriod = goalPeriodStart(t.reset, r.start).getTime();
-  let run = entriesFor(t.id).reduce((s, e) => (e.ts >= firstPeriod && e.ts < r.start.getTime() ? s + e.value : s), 0);
+  let run = countedEntries(t).reduce((s, e) => (e.ts >= firstPeriod && e.ts < r.start.getTime() ? s + e.value : s), 0);
   let period = firstPeriod;
   return sums.map((v, i) => {
     if (i > lastIdx) return 0;
@@ -1852,18 +2049,27 @@ function activePeriodKey(reset, ts) {
 }
 
 // The day a goal started counting: when it was created, or earlier if entries were added for earlier days.
+// (A repeated by-date goal starts again from its new run.) Cached while the Stats page draws,
+// since it's asked for many times per goal.
+let startDayCache = null;
 function goalStartDay(t) {
+  if (startDayCache?.has(t.id)) return startDayCache.get(t.id);
   let start = t.createdAt ? startOfDay(new Date(t.createdAt)).getTime() : Infinity;
   for (const e of state.entries) if (e.tallyId === t.id && e.ts < start) start = startOfDay(new Date(e.ts)).getTime();
-  return start === Infinity ? startOfDay(new Date()).getTime() : start;
+  if (start === Infinity) start = startOfDay(new Date()).getTime();
+  if (t.countFrom) start = Math.max(start, startOfDay(new Date(t.countFrom)).getTime());
+  startDayCache?.set(t.id, start);
+  return start;
 }
 
 // Measured days between two times: the goal's selected weekdays, from its start day, up to today.
-function measuredDays(t, fromMs, toMs) {
+// everyDay: count calendar days instead (weeks, months and years are calendar time even when only
+// some weekdays are measured).
+function measuredDays(t, fromMs, toMs, everyDay = false) {
   const end = Math.min(toMs, addDays(startOfDay(new Date()), 1).getTime());
   let days = 0;
   for (let d = new Date(Math.max(fromMs, goalStartDay(t))); d.getTime() < end; d = addDays(d, 1)) {
-    if (!t.days || t.days.includes(d.getDay())) days++;
+    if (everyDay || !t.days || t.days.includes(d.getDay())) days++;
   }
   return days;
 }
@@ -1873,20 +2079,21 @@ const averagePeriod = t => (['week', 'month', 'year'].includes(t.reset) ? t.rese
 
 // How many weeks, months or years were measured between two times (partial ones count as a fraction).
 function measuredPeriods(t, per, fromMs, toMs) {
-  if (per === 'week') return measuredDays(t, fromMs, toMs) / 7;
+  if (per === 'week') return measuredDays(t, fromMs, toMs, true) / 7;
   let n = 0;
   for (let d = new Date(fromMs); d.getTime() < toMs;) {
     const next = per === 'month' ? new Date(d.getFullYear(), d.getMonth() + 1, 1) : new Date(d.getFullYear() + 1, 0, 1);
     const start = per === 'month' ? new Date(d.getFullYear(), d.getMonth(), 1) : new Date(d.getFullYear(), 0, 1);
     const len = Math.round((next - start) / DAY_MS);
-    n += measuredDays(t, d.getTime(), Math.min(next.getTime(), toMs)) / len;
+    n += measuredDays(t, d.getTime(), Math.min(next.getTime(), toMs), true) / len;
     d = next;
   }
   return n;
 }
 
 function periodsCounted(t, year, month) {
-  const days = measuredDays(t, new Date(year, month, 1).getTime(), new Date(year, month + 1, 1).getTime());
+  const from = new Date(year, month, 1).getTime(), to = new Date(year, month + 1, 1).getTime();
+  const days = measuredDays(t, from, to, ['week', 'month', 'year'].includes(t.reset));
   switch (t.reset) {
     case 'minute': return days * 1440;
     case 'hour': return days * 24;
@@ -2087,10 +2294,12 @@ function goalTrashRow(item) {
 }
 
 function renderSettings() {
-  // Small readout to help tune the layout on a specific phone.
-  const sb = document.querySelector('.status-bg')?.offsetHeight || 0;
-  const ver = document.querySelector('meta[name="goalie-version"]')?.content || '';
-  $('#screen-info').textContent = `Screen ${screen.width}×${screen.height} · page ${window.innerWidth}×${window.innerHeight} · top ${sb} · v${ver}`;
+  $('#screen-info').textContent = `Goalie v${APP_VERSION}`;
+  const last = state.settings.lastExport;
+  $('#backup-status').textContent = last
+    ? `Last backup: ${longDate(toDateInput(new Date(last)))} (${daysAgo(last)}).`
+    : 'No backup yet. Goalie reminds you every 2 weeks.';
+  $('#btn-damaged').classList.toggle('hidden', !damagedKeys().length);
   $$('#set-theme button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.settings.theme || 'auto')));
   if (document.activeElement !== $('#set-name')) $('#set-name').value = state.settings.name || '';
   renderTrash();
@@ -2133,27 +2342,123 @@ function applyTheme() {
 }
 applyTheme();
 
-// Self-healing updates: ask the server which version is current, skipping every cache. If this copy
-// is older, clear Goalie's saved app files (never your data) and reload once.
-async function checkForNewVersion() {
+/* =========================================================
+   App updates: never automatic
+   When a newer version is on the server, Goalie asks the next time it's opened: update now, or
+   pick a later time. At that time it updates on its own (as soon as nothing is open), or the next
+   time you open it. Until then the offline copy keeps running the version you have.
+   ========================================================= */
+const APP_VERSION = document.querySelector('meta[name="goalie-version"]')?.content || '';
+let swReg = null;
+let updateAsked = false; // asked already since the app was last opened
+
+// Something is open or being edited: don't interrupt it.
+function appBusy() {
+  const a = document.activeElement;
+  return !!document.querySelector('.screen.modal.active, .sheet.show') || dragActive || editMode ||
+    !!(a && /^(INPUT|TEXTAREA)$/.test(a.tagName));
+}
+function whenIdle(fn) {
+  if (appBusy()) { setTimeout(() => whenIdle(fn), 3000); return; }
+  fn();
+}
+
+async function latestVersion() {
+  const res = await fetch('version.json?ts=' + Date.now(), { cache: 'no-store' });
+  if (!res.ok) return null;
+  return (await res.json()).version || null;
+}
+
+async function checkForUpdate(opening = false) {
   try {
-    const mine = document.querySelector('meta[name="goalie-version"]')?.content;
-    const res = await fetch('version.json?ts=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) return;
-    const { version } = await res.json();
-    if (!version || version === mine) return;
-    const tried = sessionStorage.getItem('goalie-update-tried');
-    if (tried === version) return; // already tried once this session; don't loop
-    sessionStorage.setItem('goalie-update-tried', version);
+    const latest = await latestVersion();
+    if (!latest || latest === APP_VERSION) {
+      // Up to date. A new offline copy for this same version may be waiting: let it take over quietly.
+      if (state.settings.updateAt) { state.settings.updateAt = null; save(); }
+      swReg?.waiting?.postMessage('skipWaiting');
+      return;
+    }
+    const at = state.settings.updateAt;
+    if (at === 'open' ? opening : at && Date.now() >= at) { whenIdle(applyUpdate); return; }
+    if (at || updateAsked) return; // scheduled for later, or already asked this time
+    updateAsked = true;
+    whenIdle(() => updatePrompt(latest));
+  } catch (e) { /* offline: ask next time */ }
+}
+
+function updatePrompt(latest) {
+  openSheet(
+    el('h3', {}, 'Update available'),
+    el('p', {}, `A new version of Goalie (v${latest}) is ready. Updating takes a few seconds and keeps all your goals, history and to-dos.`),
+    el('button', { class: 'sheet-btn primary', onclick: () => { closeSheet(); applyUpdate(); } }, 'Update now'),
+    el('button', { class: 'sheet-btn', onclick: () => switchSheet(() => laterSheet(latest)) }, 'Schedule for later'),
+  );
+}
+
+function laterSheet(latest) {
+  const now = new Date();
+  const at = (days, hour) => { const d = addDays(startOfDay(now), days); d.setHours(hour, 0, 0, 0); return d.getTime(); };
+  const tonight = at(0, 21);
+  const choices = [
+    ['In 1 hour', Date.now() + 3600000],
+    now.getTime() < tonight - 3600000 ? ['Tonight at 9 PM', tonight] : null,
+    ['Tomorrow at 9 AM', at(1, 9)],
+    ['Next time I open Goalie', 'open'],
+  ].filter(Boolean);
+  const pick = value => {
+    state.settings.updateAt = value;
+    save(); closeSheet();
+    toast(value === 'open' ? 'Goalie will update next time you open it'
+      : `Goalie will update ${sameDay(new Date(value), now) ? 'at' : 'tomorrow at'} ${new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+  };
+  openSheet(
+    el('h3', {}, 'When should Goalie update?'),
+    el('p', {}, `Version ${latest} installs itself then. If Goalie is closed at that time, it updates the next time you open it.`),
+    choices.map(([label, value]) => el('button', { class: 'sheet-btn', onclick: () => pick(value) }, label)),
+    el('button', { class: 'sheet-btn', onclick: () => switchSheet(() => updatePrompt(latest)) }, 'Back'),
+  );
+}
+
+// Switch to the new version: the new offline copy takes over, then the page reloads.
+async function applyUpdate() {
+  state.settings.updateAt = null;
+  save();
+  toast('Updating…');
+  try {
+    const reg = swReg || await navigator.serviceWorker?.getRegistration?.();
+    if (reg) {
+      await reg.update().catch(() => {});
+      const waiting = reg.waiting || await installedWorker(reg, 10000);
+      if (waiting) {
+        navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+        waiting.postMessage('skipWaiting');
+        setTimeout(freshReload, 6000); // in case the switch never reports back
+        return;
+      }
+    }
+  } catch (e) { /* fall through */ }
+  freshReload();
+}
+function installedWorker(reg, ms) {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(null), ms);
+    const watch = w => w && w.addEventListener('statechange', () => {
+      if (w.state === 'installed') { clearTimeout(timer); resolve(w); }
+    });
+    if (reg.installing) watch(reg.installing);
+    reg.addEventListener('updatefound', () => watch(reg.installing));
+  });
+}
+// Last resort: clear Goalie's saved app files (never your data) and load straight from the server.
+async function freshReload() {
+  try {
     const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
     await Promise.all(regs.map(r => r.unregister()));
     const keys = (await window.caches?.keys?.()) || [];
     await Promise.all(keys.map(k => caches.delete(k)));
-    location.replace(location.pathname + '?v=' + version + '&t=' + Date.now());
-  } catch (e) { /* offline or blocked: try again next time */ }
+  } catch (e) { /* reload anyway */ }
+  location.replace(location.pathname + '?fresh=' + Date.now());
 }
-checkForNewVersion();
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForNewVersion(); });
 
 
 darkQuery?.addEventListener?.('change', applyTheme);
@@ -2193,9 +2498,11 @@ $('#btn-export').addEventListener('click', async () => {
   const json = JSON.stringify({ app: 'goalie', version: 1, exportedAt: new Date().toISOString(), ...state }, null, 2);
   const name = `goalie-backup-${new Date().toISOString().slice(0, 10)}.json`;
   const file = new File([json], name, { type: 'application/json' });
+  const done = () => { state.settings.lastExport = Date.now(); save(); hideBanner(); renderSettings(); };
   try {
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({ files: [file], title: 'Goalie backup' });
+      done();
       return;
     }
   } catch (err) {
@@ -2205,7 +2512,52 @@ $('#btn-export').addEventListener('click', async () => {
   const a = el('a', { href: url, download: name });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+  done();
 });
+
+// Unreadable saved data that was kept aside (see keepDamagedCopy): download it to recover by hand.
+function damagedKeys() {
+  const keys = [];
+  try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.startsWith(STORE_KEY + '.damaged-')) keys.push(k); } } catch (e) { /* blocked */ }
+  return keys;
+}
+$('#btn-damaged').addEventListener('click', () => {
+  for (const k of damagedKeys()) {
+    const url = URL.createObjectURL(new Blob([localStorage.getItem(k)], { type: 'application/json' }));
+    const a = el('a', { href: url, download: `goalie-damaged-${k.split('-').pop()}.json` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+});
+
+// 'today', 'yesterday', '15 days ago'
+function daysAgo(ts) {
+  const n = Math.round((startOfDay(new Date()) - startOfDay(new Date(ts))) / DAY_MS);
+  return n <= 0 ? 'today' : n === 1 ? 'yesterday' : `${n} days ago`;
+}
+
+// Every 2 weeks (at most once a day), remind about exporting a backup.
+function backupReminder() {
+  if (!state.tallies.length || document.visibilityState !== 'visible') return;
+  const s = state.settings, today = dayKey(new Date());
+  if (!s.lastExport && !s.backupFrom) { s.backupFrom = Date.now(); save(); return; }
+  const since = s.lastExport || s.backupFrom;
+  if (Date.now() - since < 14 * DAY_MS || s.backupNagDay === today) return;
+  if (document.querySelector('.screen.modal.active, .sheet.show')) return;
+  s.backupNagDay = today; save();
+  const b = $('#banner');
+  b.innerHTML = '';
+  b.style.setProperty('--banner-accent', 'var(--accent)');
+  b.append(
+    el('div', { class: 'banner-text' }, el('strong', {}, 'Back up your Goalie data'),
+      el('span', {}, s.lastExport ? `Your last backup was ${daysAgo(s.lastExport)}.` : 'Your goals are only saved on this phone.')),
+    el('button', { class: 'banner-btn', onclick: () => $('#btn-export').click() }, 'Export'),
+    el('button', { class: 'banner-close', 'aria-label': 'Dismiss', onclick: hideBanner }, '×'),
+  );
+  b.classList.add('show');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(hideBanner, 15000);
+}
 
 $('#import-file').addEventListener('change', async e => {
   const f = e.target.files[0];
@@ -2220,8 +2572,9 @@ $('#import-file').addEventListener('change', async e => {
       el('button', {
         class: 'sheet-btn primary',
         onclick: () => {
-          state = { tallies: data.tallies, entries: data.entries, trash: Array.isArray(data.trash) ? data.trash : [], todos: Array.isArray(data.todos) ? data.todos : [], todoSections: Array.isArray(data.todoSections) ? data.todoSections : [], todoTrash: Array.isArray(data.todoTrash) ? data.todoTrash : [], settings: { ...DEFAULT_STATE().settings, ...(data.settings || {}) } };
-          save(); renderToday(); renderSettings(); closeSheet(); toast('Backup imported');
+          state = normalizeState(data);
+          migrate(); save(); clearUndoHistory();
+          renderToday(); renderSettings(); closeSheet(); toast('Backup imported');
         },
       }, 'Import'),
       el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
@@ -2231,17 +2584,8 @@ $('#import-file').addEventListener('change', async e => {
   }
 });
 
-// Clears Goalie's saved app files (not your data) and reloads the newest version from the server.
-$('#btn-force-update').addEventListener('click', async () => {
-  toast('Updating…');
-  try {
-    const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
-    await Promise.all(regs.map(r => r.unregister()));
-    const keys = (await window.caches?.keys?.()) || [];
-    await Promise.all(keys.map(k => caches.delete(k)));
-  } catch (e) { /* reload anyway */ }
-  location.replace(location.pathname + '?fresh=' + Date.now());
-});
+// Settings → Update Goalie now: load the newest version straight from the server (data is kept).
+$('#btn-force-update').addEventListener('click', () => { toast('Updating…'); freshReload(); });
 
 $('#btn-notify').addEventListener('click', async () => { await ensureNotifyPermission(); renderSettings(); });
 
@@ -2251,7 +2595,7 @@ $('#btn-wipe').addEventListener('click', () => {
     el('p', {}, 'All tallies and history on this device will be erased. Export a backup first if you might want it back.'),
     el('button', {
       class: 'sheet-btn danger',
-      onclick: () => { state = DEFAULT_STATE(); save(); renderToday(); renderSettings(); closeSheet(); toast('All data deleted'); },
+      onclick: () => { state = DEFAULT_STATE(); save(); clearUndoHistory(); renderToday(); renderSettings(); closeSheet(); toast('All data deleted'); },
     }, 'Delete all data'),
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
   );
@@ -2700,28 +3044,49 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') { renderToday(); checkReminders(); }
 });
 
-if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  const hadController = !!navigator.serviceWorker.controller;
+// Use the IndexedDB copy if it's newer than what localStorage had (e.g. localStorage filled up),
+// then keep both up to date from here on.
+async function syncStorage() {
+  let saved = null;
+  try {
+    const json = await idbGet('state');
+    storage.idbWorks = true;
+    if (json) {
+      try { saved = JSON.parse(json); } catch (e) { keepDamagedCopy(json); }
+    }
+  } catch (e) { return; } // no IndexedDB: localStorage only
+  if (saved && (saved.savedAt || 0) > (state.savedAt || 0)) {
+    state = normalizeState(saved);
+    migrate();
+    applyTheme();
+    renderToday();
+  }
+  storage.synced = true;
+  idbSet('state', JSON.stringify(state)).catch(() => {});
+}
+syncStorage();
+// Ask iPhone not to clear Goalie's storage when space runs low.
+navigator.storage?.persist?.().catch(() => {});
+if (storage.damagedKey) setTimeout(() => toast('Saved data couldn’t be read. A copy was kept (Settings → Backup).'), 1200);
+
+// (Not on localhost: while developing, edits should show up without an update step.)
+const isLocalDev = location.protocol === 'file:' || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+if ('serviceWorker' in navigator && !isLocalDev) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
-      // iPhone keeps home-screen apps frozen in the background; check for a new version
-      // every time Goalie comes back to the front.
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') reg.update().catch(() => {});
-      });
-    }).catch(() => {});
+      swReg = reg;
+      checkForUpdate(true);
+    }).catch(() => checkForUpdate(true));
   });
-
-  // A new version took over: reload once you're not in the middle of something.
-  let reloadPending = false;
-  const busy = () => !!document.querySelector('.screen.modal.active, .sheet.show') || dragActive;
-  const reloadWhenIdle = () => {
-    if (busy()) { setTimeout(reloadWhenIdle, 2000); return; }
-    location.reload();
-  };
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!hadController || reloadPending) return; // first install: nothing old to replace
-    reloadPending = true;
-    reloadWhenIdle();
-  });
+} else {
+  checkForUpdate(true);
 }
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') { updateAsked = false; return; } // reopening asks again
+  swReg?.update().catch(() => {});
+  checkForUpdate(true);
+  askAboutEndedGoals();
+  backupReminder();
+});
+setInterval(() => checkForUpdate(false), 60000); // a scheduled update time may arrive while open
+setTimeout(() => { askAboutEndedGoals(); backupReminder(); }, 1500);
