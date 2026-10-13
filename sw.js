@@ -6,10 +6,10 @@ const ASSETS = [
   './styles.css',
   './app.js',
   './manifest.webmanifest',
-  './icons/goalie-nb-192.png',
-  './icons/goalie-nb-512.png',
-  './icons/goalie-nb-touch-180.png',
-  './icons/goalie-nb-maskable-512.png',
+  './icons/goalie-bar-192.png',
+  './icons/goalie-bar-512.png',
+  './icons/goalie-bar-touch-180.png',
+  './icons/goalie-bar-maskable-512.png',
 ];
 
 self.addEventListener('install', event => {
