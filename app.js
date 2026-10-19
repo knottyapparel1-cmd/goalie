@@ -802,7 +802,7 @@ function restoreTally(trashId) {
    opts: holdMs, scroller, itemSelector (what it can be dropped next to), containerSelector (empty
    places it can be dropped into), onTap, onHold (held without moving), onLift, onDrop, handle. */
 // Buttons inside a draggable item that keep working on their own (they never start a drag).
-const OWN_CONTROLS = '.step-btn, .card-delete, .todo-check, .todo-section-add, .todo-section-more, input, textarea';
+const OWN_CONTROLS = '.step-btn, .card-delete, .todo-check, .todo-section-add, .todo-section-more, .todo-section-delete, input, textarea';
 let dragActive = false; // something is being dragged; hold off re-rendering until it's dropped
 function dragSort(node, opts) {
   const { holdMs = 450, scroller, itemSelector, containerSelector, onTap, onHold, onLift, onDrop } = opts;
@@ -3333,7 +3333,7 @@ function renderTodos() {
   const box = $('#todo-list');
   box.innerHTML = '';
   if (todoView === 'priority') return renderPriorityView(box);
-  if (todoEditing) box.append(el('p', { class: 'stats-hint todo-edit-hint' }, 'Drag a section by its name to move it. Tap DONE when finished.'));
+  if (todoEditing) box.append(el('p', { class: 'stats-hint todo-edit-hint' }, 'Drag a section by its name to move it, or tap the trash can to delete it. Tap DONE when finished.'));
 
   const sections = todoSectionNames();
   const loose = state.todos.filter(t => !t.section);
@@ -3373,6 +3373,7 @@ function todoSection(name, items) {
   const color = name && (state.settings.todoSectionColors || {})[name];
   const head = foldHead(key, name ? name.toUpperCase() : 'NO SECTION', open,
     el('div', { class: 'todo-head-actions' },
+      todoEditing && name ? el('button', { type: 'button', class: 'todo-section-delete', 'aria-label': `Delete ${name}`, onclick: () => deleteSectionSheet(name) }, TRASH_ICON()) : null,
       todoEditing && name ? el('span', { class: 'todo-grip', 'aria-hidden': 'true' }, '≡') : null,
       !todoEditing && name ? el('button', { type: 'button', class: 'todo-section-more', 'aria-label': `Edit ${name}`, onclick: () => sectionMenu(name) }, '⋯') : null,
       todoEditing ? null : el('button', { type: 'button', class: 'todo-section-add', 'aria-label': `Add to ${name || 'no section'}`, onclick: () => todoSheet(null, name) }, '+ Add')));
@@ -3563,6 +3564,45 @@ function sectionColorGrid(current, onPick) {
   return [grid, none];
 }
 
+// Trash can icon for deleting a section in EDIT.
+function TRASH_ICON() {
+  const span = el('span', { class: 'trash-icon', 'aria-hidden': 'true' });
+  span.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+  return span;
+}
+
+// Delete a section: just the section (its to-dos move to No section), or the section and its to-dos
+// (they go to Recently Deleted for 30 days). Either can be undone.
+function deleteSectionSheet(name) {
+  const items = state.todos.filter(t => t.section === name);
+  const n = items.length, word = `to-do${n === 1 ? '' : 's'}`;
+  const dropSection = () => {
+    state.todoSections = state.todoSections.filter(s => s !== name);
+    const colors = state.settings.todoSectionColors;
+    if (colors) delete colors[name];
+    state.settings.todoCollapsed = (state.settings.todoCollapsed || []).filter(k => k !== name);
+  };
+  openSheet(
+    el('h3', {}, `Delete “${name}”?`),
+    el('p', {}, n ? `This section has ${n} ${word}.` : 'This section is empty.'),
+    el('button', {
+      class: 'sheet-btn',
+      onclick: () => {
+        todoChange(() => { dropSection(); items.forEach(t => { t.section = ''; }); });
+        closeSheet(); toast(`Deleted section ${name}`, todoUndo);
+      },
+    }, n ? `Delete section only (keep its ${n} ${word})` : 'Delete section'),
+    n ? el('button', {
+      class: 'sheet-btn danger',
+      onclick: () => {
+        todoChange(() => { dropSection(); items.forEach(t => trashTodo(t, 'deleted')); });
+        closeSheet(); toast(`Deleted ${name} and ${n} ${word}`, todoUndo);
+      },
+    }, `Delete section and its ${n} ${word}`) : null,
+    el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
+  );
+}
+
 function newSectionSheet() {
   const input = el('input', { class: 'text-input', type: 'text', maxlength: 30, placeholder: 'e.g. Weekly Chores' });
   let color = '';
@@ -3609,17 +3649,7 @@ function sectionMenu(name) {
         closeSheet();
       },
     }, 'Save name'),
-    el('button', {
-      class: 'sheet-btn danger',
-      onclick: () => {
-        todoChange(() => {
-          state.todoSections = state.todoSections.filter(s => s !== name);
-          state.todos.forEach(t => { if (t.section === name) t.section = ''; });
-        });
-        closeSheet();
-        toast(`Removed section ${name}`, todoUndo);
-      },
-    }, 'Remove section (keeps its to-dos)'),
+    el('button', { class: 'sheet-btn danger', onclick: () => switchSheet(() => deleteSectionSheet(name)) }, 'Delete section…'),
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
   );
 }

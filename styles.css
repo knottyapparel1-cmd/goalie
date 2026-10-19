@@ -1619,3 +1619,13 @@ html[data-theme="dark"] .card.off-day.off-day { background: #2a3140 !important; 
 .todo-edit.on { background: none; color: var(--accent); }
 .todo-edit.on .edit-icon { display: none; }
 .todo-edit.on .edit-done { display: inline; }
+
+/* To-do header: TO-DO, undo, redo, edit and × evenly spaced across the top */
+#screen-todo .modal-head { justify-content: space-between; }
+#screen-todo .todo-head { display: contents; }
+#screen-todo .todo-head h1, #screen-todo .todo-edit { margin: 0; }
+
+/* EDIT: delete a section */
+.todo-section-delete { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #e5484d; color: #fff; }
+.todo-section-delete:active { background: #c93b40; }
+.todo-section-delete .trash-icon { display: grid; }
