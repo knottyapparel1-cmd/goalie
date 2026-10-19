@@ -813,7 +813,6 @@ function dragSort(node, opts) {
   const lift = () => {
     timer = null; lifted = true; dragActive = true;
     node.classList.add('lifted');
-    navigator.vibrate?.(10);
     onLift?.();
   };
   const startGhost = () => {
