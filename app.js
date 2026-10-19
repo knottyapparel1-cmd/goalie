@@ -1382,7 +1382,7 @@ $('#btn-help').addEventListener('click', () => {
 $('#btn-add').addEventListener('click', () => { if (editMode) setEditMode(false); openForm(null); });
 $('#btn-todo').addEventListener('click', () => {
   if (editMode) setEditMode(false);
-  todoEditing = false; $('#btn-todo-edit').textContent = 'EDIT'; $('#btn-todo-edit').classList.remove('on');
+  todoEditing = false; $('#btn-todo-edit').classList.remove('on'); $('#btn-todo-edit').setAttribute('aria-pressed', 'false');
   renderTodos();
   openScreen('todo');
 });
@@ -3632,8 +3632,8 @@ $('#btn-todo-add').addEventListener('click', () => todoSheet(null));
 $('#btn-todo-edit').addEventListener('click', () => {
   todoEditing = !todoEditing;
   if (todoEditing) todoView = 'lists';
-  $('#btn-todo-edit').textContent = todoEditing ? 'DONE' : 'EDIT';
   $('#btn-todo-edit').classList.toggle('on', todoEditing);
+  $('#btn-todo-edit').setAttribute('aria-pressed', String(todoEditing));
   renderTodos();
 });
 $('#btn-todo-undo').addEventListener('click', todoUndo);
