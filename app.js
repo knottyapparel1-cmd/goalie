@@ -3550,16 +3550,38 @@ function todoSheet(t, presetSection) {
   draw();
 }
 
+// The card color grid for a to-do section, plus NO COLOR. onPick(color or '').
+function sectionColorGrid(current, onPick) {
+  const grid = el('div', { class: 'colors section-colors' }, PALETTE.flatMap(({ name: fam, shades }) => shades.map((c, i) =>
+    el('button', { type: 'button', class: `swatch${c === '#ffffff' ? ' swatch-white' : ''}${current === c ? ' on' : ''}`, style: `background:${c}`, 'data-c': c, 'aria-label': `${fam} ${i + 1}`, onclick: () => pick(c) }))));
+  const none = el('button', { type: 'button', class: `text-auto${!current ? ' on' : ''}`, onclick: () => pick('') }, 'NO COLOR');
+  const pick = c => {
+    grid.querySelectorAll('.swatch').forEach(sw => sw.classList.toggle('on', sw.dataset.c === c));
+    none.classList.toggle('on', !c);
+    onPick(c);
+  };
+  return [grid, none];
+}
+
 function newSectionSheet() {
   const input = el('input', { class: 'text-input', type: 'text', maxlength: 30, placeholder: 'e.g. Weekly Chores' });
+  let color = '';
   const add = () => {
     const name = input.value.trim();
     if (!name) return;
+    if (color) (state.settings.todoSectionColors ||= {})[name] = color;
     if (!state.todoSections.includes(name)) todoChange(() => state.todoSections.push(name));
+    else { save(); renderTodos(); }
     closeSheet();
   };
   input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
-  openSheet(el('h3', {}, 'New section'), input, el('button', { class: 'sheet-btn primary', onclick: add }, 'Add section'), el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'));
+  openSheet(
+    el('h3', {}, 'New section'),
+    input,
+    el('div', { class: 'sheet-label' }, 'SECTION COLOR'),
+    sectionColorGrid('', c => { color = c; }),
+    el('button', { class: 'sheet-btn primary', onclick: add }, 'Add section'),
+    el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'));
   setTimeout(() => input.focus(), 250);
 }
 
@@ -3569,16 +3591,12 @@ function sectionMenu(name) {
   const pickColor = c => {
     if (c) colors[name] = c; else delete colors[name];
     save(); renderTodos();
-    $$('#sheet .swatch').forEach(s => s.classList.toggle('on', s.dataset.c === c));
-    $('#sheet .text-auto')?.classList.toggle('on', !c);
   };
   openSheet(
     el('h3', {}, name),
     el('div', { class: 'sheet-label' }, 'RENAME', input),
     el('div', { class: 'sheet-label' }, 'SECTION COLOR'),
-    el('div', { class: 'colors section-colors' }, PALETTE.flatMap(({ name: fam, shades }) => shades.map((c, i) =>
-      el('button', { type: 'button', class: `swatch${c === '#ffffff' ? ' swatch-white' : ''}${colors[name] === c ? ' on' : ''}`, style: `background:${c}`, 'data-c': c, 'aria-label': `${fam} ${i + 1}`, onclick: () => pickColor(c) })))),
-    el('button', { type: 'button', class: `text-auto${!colors[name] ? ' on' : ''}`, onclick: () => pickColor('') }, 'NO COLOR'),
+    sectionColorGrid(colors[name] || '', pickColor),
     el('button', {
       class: 'sheet-btn primary',
       onclick: () => {
