@@ -421,7 +421,6 @@ $$('[data-close]').forEach(btn => btn.addEventListener('click', () => {
    Today screen
    ========================================================= */
 let editMode = false;
-let dragActive = false; // a card is being dragged; hold off re-rendering until it's dropped
 
 // Snapshot taken when edit mode starts, so CANCEL can undo everything done since.
 let editSnapshot = null;
@@ -742,8 +741,18 @@ function tallyCard(t, bump) {
   cardFoot(t, bottom),
   editMode ? deleteButton(t) : null);
 
-  if (editMode) attachDrag(card, t);
-  else attachPress(card, () => (completed && !goalEnded(t) ? toast('Goal completed. Use + or − to change it.') : onTap(t)), () => tallyMenu(t));
+  // Hold to lift and drag anywhere (in edit mode a plain press drags); held still = the menu.
+  let fromGroup = '';
+  dragSort(card, {
+    holdMs: editMode ? 0 : 450,
+    scroller: $('#tally-list'),
+    itemSelector: '#tally-list .card',
+    containerSelector: '#tally-list .grid',
+    onTap: () => (editMode ? openForm(t) : completed && !goalEnded(t) ? toast('Goal completed. Use + or − to change it.') : onTap(t)),
+    onHold: () => (editMode ? openForm(t) : tallyMenu(t)),
+    onLift: () => { fromGroup = card.parentElement?.dataset.group || ''; },
+    onDrop: () => commitCardOrder(card, t, fromGroup),
+  });
   return card;
 }
 
@@ -786,91 +795,150 @@ function restoreTally(trashId) {
 }
 
 // Edit mode: drag a card to reorder (or into another group); a plain tap opens its settings.
-function attachDrag(card, t) {
-  let start = null, dragging = false, ghost = null, fromGroup = '';
-  const list = $('#tally-list');
+/* Hold-and-drag sorting, used by goal cards, to-dos and to-do sections.
+   Press and hold (or just press, in edit modes: holdMs 0) and the item lifts; it then follows your
+   finger until you let go, and the list scrolls by itself while you hold near its top or bottom.
+   Touch events (not pointer events) are used so iPhone can't take a lifted item over for scrolling.
+   opts: holdMs, scroller, itemSelector (what it can be dropped next to), containerSelector (empty
+   places it can be dropped into), onTap, onHold (held without moving), onLift, onDrop, handle. */
+// Buttons inside a draggable item that keep working on their own (they never start a drag).
+const OWN_CONTROLS = '.step-btn, .card-delete, .todo-check, .todo-section-add, .todo-section-more, input, textarea';
+let dragActive = false; // something is being dragged; hold off re-rendering until it's dropped
+function dragSort(node, opts) {
+  const { holdMs = 450, scroller, itemSelector, containerSelector, onTap, onHold, onLift, onDrop } = opts;
+  const handle = opts.handle || node;
+  let sx = 0, sy = 0, x = 0, y = 0, timer = null, pressed = false, lifted = false, moved = false, ghost = null, gx = 0, gy = 0, raf = null;
+  let suppressClickUntil = 0;
 
-  const begin = () => {
-    fromGroup = card.parentElement?.dataset.group || '';
-    const r = card.getBoundingClientRect();
-    ghost = card.cloneNode(true);
+  const lift = () => {
+    timer = null; lifted = true; dragActive = true;
+    node.classList.add('lifted');
+    navigator.vibrate?.(10);
+    onLift?.();
+  };
+  const startGhost = () => {
+    const r = node.getBoundingClientRect();
+    gx = sx - r.left; gy = sy - r.top;
+    ghost = node.cloneNode(true);
+    ghost.classList.remove('lifted');
     ghost.classList.add('drag-ghost');
-    Object.assign(ghost.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    Object.assign(ghost.style, { left: '0px', top: '0px', width: `${r.width}px`, height: `${r.height}px` });
     document.body.append(ghost);
-    card.classList.add('drag-placeholder');
-    dragActive = true;
+    node.classList.add('drag-placeholder');
+    raf = requestAnimationFrame(tick);
   };
-
-  const move = e => {
-    ghost.style.transform = `translate(${e.clientX - start.x}px, ${e.clientY - start.y}px) scale(1.05)`;
-    const lr = list.getBoundingClientRect();
-    if (e.clientY < lr.top + 50) list.scrollTop -= 10;
-    else if (e.clientY > lr.bottom - 50) list.scrollTop += 10;
-
-    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.card');
-    if (!target || target === card || !list.contains(target)) return;
-    const cards = [...list.querySelectorAll('.card')];
-    if (cards.indexOf(card) < cards.indexOf(target)) target.after(card);
-    else target.before(card);
+  // keeps the ghost under the finger and scrolls the list while held near an edge
+  const tick = () => {
+    if (!ghost) return;
+    ghost.style.transform = `translate(${x - gx}px, ${y - gy}px) scale(1.04)`;
+    if (scroller) {
+      const r = scroller.getBoundingClientRect(), edge = 60;
+      if (y < r.top + edge) scroller.scrollTop -= Math.ceil((r.top + edge - y) / 6);
+      else if (y > r.bottom - edge) scroller.scrollTop += Math.ceil((y - (r.bottom - edge)) / 6);
+      reposition();
+    }
+    raf = requestAnimationFrame(tick);
   };
-
+  const reposition = () => {
+    const under = document.elementFromPoint(x, y);
+    if (!under) return;
+    const target = under.closest(itemSelector);
+    if (target && target !== node && !target.contains(node)) {
+      const all = [...document.querySelectorAll(itemSelector)];
+      const sameParent = target.parentElement === node.parentElement;
+      if (sameParent) { if (all.indexOf(node) < all.indexOf(target)) target.after(node); else target.before(node); }
+      else { const r = target.getBoundingClientRect(); if (y > r.top + r.height / 2) target.after(node); else target.before(node); }
+      return;
+    }
+    const box = containerSelector && under.closest(containerSelector);
+    if (box && node.parentElement !== box && !node.contains(box)) box.append(node);
+  };
   const finish = () => {
-    ghost?.remove();
-    ghost = null;
-    card.classList.remove('drag-placeholder');
+    clearTimeout(timer); timer = null;
+    cancelAnimationFrame(raf);
+    const wasLifted = lifted, wasDragged = !!ghost;
+    ghost?.remove(); ghost = null;
+    node.classList.remove('lifted', 'drag-placeholder');
+    pressed = lifted = false;
     dragActive = false;
-    const byId = new Map(state.tallies.map(x => [x.id, x]));
-    const ordered = [];
-    const seen = new Set();
-    for (const c of list.querySelectorAll('.card')) {
-      const tally = byId.get(c.dataset.id);
-      if (!tally || seen.has(tally.id)) continue; // a goal in several groups appears more than once
-      seen.add(tally.id);
-      ordered.push(tally);
-    }
-    // Dragged into another group's section: swap that one membership.
-    const toGroup = card.parentElement?.dataset.group || '';
-    if (toGroup !== fromGroup) {
-      const gs = groupsOf(t).filter(g => g !== fromGroup);
-      if (toGroup) gs.push(toGroup);
-      setGroups(t, gs);
-    }
-    // Goals hidden by the filter keep their slots; the visible ones fill the rest in their new order.
-    const shown = new Set(ordered.map(x => x.id));
-    let next = 0;
-    state.tallies = state.tallies.map(x => (shown.has(x.id) ? ordered[next++] : x));
-    save();
-    renderToday();
+    if (wasLifted) suppressClickUntil = Date.now() + 600;
+    if (wasDragged) onDrop?.();
+    else if (wasLifted) onHold?.();
+    else if (!moved && onTap) { suppressClickUntil = Date.now() + 600; onTap(); } // (no onTap: the tap goes to the buttons inside)
   };
 
-  card.addEventListener('pointerdown', e => {
-    if (e.button > 0) return;
-    start = { x: e.clientX, y: e.clientY };
-    dragging = false;
-    try { card.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-  });
-  card.addEventListener('pointermove', e => {
-    if (!start) return;
-    if (!dragging) {
-      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < 6) return;
-      dragging = true;
-      begin();
-    }
-    move(e);
-  });
-  card.addEventListener('pointerup', () => {
-    if (!start) return;
-    if (dragging) finish();
-    else openForm(t);
-    start = null; dragging = false;
-  });
-  const cancel = () => {
-    if (dragging) finish();
-    start = null; dragging = false;
+  const down = (px, py, target) => {
+    if (target.closest(OWN_CONTROLS)) return false;
+    pressed = true; moved = false; lifted = false;
+    sx = x = px; sy = y = py;
+    if (holdMs > 0) timer = setTimeout(lift, holdMs);
+    return true;
   };
-  card.addEventListener('pointercancel', cancel);
-  card.addEventListener('lostpointercapture', () => { if (dragging) cancel(); });
-  card.addEventListener('contextmenu', e => e.preventDefault());
+  const drag = (px, py) => {
+    x = px; y = py;
+    const far = Math.hypot(px - sx, py - sy);
+    if (!lifted) {
+      if (far > 10) {
+        moved = true;
+        if (holdMs > 0) { clearTimeout(timer); timer = null; pressed = false; return false; } // it's a scroll
+        lift();
+      } else return false;
+    }
+    if (!ghost && far > 4) startGhost();
+    return true;
+  };
+
+  // touch
+  handle.addEventListener('touchstart', e => { if (e.touches.length === 1) down(e.touches[0].clientX, e.touches[0].clientY, e.target); }, { passive: true });
+  handle.addEventListener('touchmove', e => {
+    if (!pressed) return;
+    if (drag(e.touches[0].clientX, e.touches[0].clientY) || lifted) e.preventDefault();
+  }, { passive: false });
+  handle.addEventListener('touchend', e => { if (pressed) { if (lifted || (!moved && onTap)) e.preventDefault(); finish(); } });
+  handle.addEventListener('touchcancel', () => { if (pressed) finish(); });
+  // mouse (computers)
+  handle.addEventListener('mousedown', e => {
+    if (e.button !== 0 || !down(e.clientX, e.clientY, e.target)) return;
+    const mm = ev => { if (drag(ev.clientX, ev.clientY)) ev.preventDefault(); };
+    const mu = () => { window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); if (pressed) finish(); };
+    window.addEventListener('mousemove', mm);
+    window.addEventListener('mouseup', mu);
+  });
+  // a held/dragged item shouldn't also "click" what's under it; VoiceOver/keyboard clicks still tap
+  handle.addEventListener('click', e => {
+    if (e.target.closest(OWN_CONTROLS)) return; // + / − / ✓ and friends always work
+    if (Date.now() < suppressClickUntil) { e.preventDefault(); e.stopPropagation(); return; }
+    if (e.target.closest('button') && e.target.closest('button') !== handle) return;
+    onTap?.();
+  }, true);
+  handle.addEventListener('keydown', e => { if (e.target === handle && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onTap?.(); } });
+  handle.addEventListener('contextmenu', e => e.preventDefault());
+}
+
+// After a goal card is dropped: save the new order (and group, if it moved into another section).
+function commitCardOrder(card, t, fromGroup) {
+  const list = $('#tally-list');
+  const byId = new Map(state.tallies.map(x => [x.id, x]));
+  const ordered = [];
+  const seen = new Set();
+  for (const c of list.querySelectorAll('.card')) {
+    const tally = byId.get(c.dataset.id);
+    if (!tally || seen.has(tally.id)) continue; // a goal in several groups appears more than once
+    seen.add(tally.id);
+    ordered.push(tally);
+  }
+  const toGroup = card.parentElement?.dataset.group || '';
+  if (toGroup !== fromGroup) {
+    const gs = groupsOf(t).filter(g => g !== fromGroup);
+    if (toGroup) gs.push(toGroup);
+    setGroups(t, gs);
+  }
+  // Goals hidden by the filter keep their slots; the visible ones fill the rest in their new order.
+  const shown = new Set(ordered.map(x => x.id));
+  let next = 0;
+  state.tallies = state.tallies.map(x => (shown.has(x.id) ? ordered[next++] : x));
+  save();
+  renderToday();
 }
 
 // Goal title followed by an up (increase) or down (decrease) arrow.
@@ -930,26 +998,6 @@ function goalBadge(t, count) {
   return count > t.target ? el('span', { class: 'card-check over', title: 'Over your goal' }, '!') : null;
 }
 
-function attachPress(node, onTapFn, onLongFn) {
-  let timer = null, fired = false, sx = 0, sy = 0;
-  const cancel = () => { clearTimeout(timer); timer = null; node.classList.remove('pressing'); };
-  node.addEventListener('pointerdown', e => {
-    fired = false; sx = e.clientX; sy = e.clientY;
-    node.classList.add('pressing');
-    timer = setTimeout(() => { fired = true; cancel(); onLongFn(); }, 480);
-  });
-  node.addEventListener('pointermove', e => {
-    if (timer && (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10)) cancel();
-  });
-  let lastPointer = 0;
-  node.addEventListener('pointerup', () => { lastPointer = Date.now(); if (timer) { cancel(); if (!fired) onTapFn(); } });
-  // VoiceOver and keyboards activate with a click (or Enter/Space) and no finger press first.
-  node.addEventListener('click', () => { if (Date.now() - lastPointer > 700) onTapFn(); });
-  node.addEventListener('keydown', e => { if (e.target === node && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onTapFn(); } });
-  node.addEventListener('pointercancel', cancel);
-  node.addEventListener('pointerleave', cancel);
-  node.addEventListener('contextmenu', e => e.preventDefault());
-}
 
 function lastInPeriod(t) {
   const [from, to] = viewPeriod(t);
@@ -1335,6 +1383,7 @@ $('#btn-help').addEventListener('click', () => {
 $('#btn-add').addEventListener('click', () => { if (editMode) setEditMode(false); openForm(null); });
 $('#btn-todo').addEventListener('click', () => {
   if (editMode) setEditMode(false);
+  todoEditing = false; $('#btn-todo-edit').textContent = 'EDIT'; $('#btn-todo-edit').classList.remove('on');
   renderTodos();
   openScreen('todo');
 });
@@ -3274,7 +3323,7 @@ function todoTrashSheet() {
 }
 
 function todoSectionNames() {
-  const names = [...state.todoSections];
+  const names = [...new Set(state.todoSections)]; // (never show a section twice)
   for (const t of state.todos) if (t.section && !names.includes(t.section)) names.push(t.section);
   return names;
 }
@@ -3285,6 +3334,7 @@ function renderTodos() {
   const box = $('#todo-list');
   box.innerHTML = '';
   if (todoView === 'priority') return renderPriorityView(box);
+  if (todoEditing) box.append(el('p', { class: 'stats-hint todo-edit-hint' }, 'Drag a section by its name to move it. Tap DONE when finished.'));
 
   const sections = todoSectionNames();
   const loose = state.todos.filter(t => !t.section);
@@ -3321,22 +3371,44 @@ function foldHead(key, label, count, ...extra) {
 function todoSection(name, items) {
   const open = items.filter(t => !t.done).length;
   const key = name || '__none__';
-  return el('div', { class: 'todo-section' },
-    foldHead(key, name ? name.toUpperCase() : 'NO SECTION', open,
-      el('div', { class: 'todo-head-actions' },
-        name ? el('button', { type: 'button', class: 'todo-section-more', 'aria-label': `Rename or remove ${name}`, onclick: () => sectionMenu(name) }, '⋯') : null,
-        el('button', { type: 'button', class: 'todo-section-add', 'aria-label': `Add to ${name || 'no section'}`, onclick: () => todoSheet(null, name) }, '+ Add'))),
-    todoFolded(key) ? null : items.length ? sortTodos(items).map(t => todoRow(t, false)) : el('p', { class: 'todo-empty' }, 'No to-dos here yet.'));
+  const color = name && (state.settings.todoSectionColors || {})[name];
+  const head = foldHead(key, name ? name.toUpperCase() : 'NO SECTION', open,
+    el('div', { class: 'todo-head-actions' },
+      todoEditing && name ? el('span', { class: 'todo-grip', 'aria-hidden': 'true' }, '≡') : null,
+      !todoEditing && name ? el('button', { type: 'button', class: 'todo-section-more', 'aria-label': `Edit ${name}`, onclick: () => sectionMenu(name) }, '⋯') : null,
+      todoEditing ? null : el('button', { type: 'button', class: 'todo-section-add', 'aria-label': `Add to ${name || 'no section'}`, onclick: () => todoSheet(null, name) }, '+ Add')));
+  const folded = todoEditing || todoFolded(key);
+  const section = el('div', {
+    class: `todo-section${color ? ` colored ${inkClass(color)}` : ''}${todoEditing ? ' editing' : ''}`,
+    style: color ? `background:${color}` : '',
+    'data-section': name,
+  },
+  head,
+  el('div', { class: 'todo-items', 'data-section': name },
+    folded ? null : items.length ? sortTodos(items).map(t => todoRow(t, false)) : el('p', { class: 'todo-empty' }, 'No to-dos here yet.')));
+  // Hold a section's header to move the whole section (in EDIT, just press and drag).
+  if (name) dragSort(section, {
+    handle: head,
+    holdMs: todoEditing ? 0 : 450,
+    scroller: $('#todo-list'),
+    itemSelector: '#todo-list .todo-section[data-section]:not([data-section=""])',
+    onDrop: commitSectionOrder,
+  });
+  return section;
 }
 
 // open items first (newest first), then finished ones
+// To-dos with a priority sort by it (High first); the rest stay in the order they were added (or
+// dragged into).
+const todoRank = t => (t.priority && QUADRANTS[t.quadrant] ? t.quadrant : 9);
+const todoOrder = t => t.order ?? t.createdAt;
 function sortTodos(items) {
-  return [...items].sort((a, b) => (a.done - b.done) || (b.createdAt - a.createdAt));
+  return [...items].sort((a, b) => (todoRank(a) - todoRank(b)) || (todoOrder(a) - todoOrder(b)));
 }
 
 function todoRow(t, showSection) {
   const q = t.priority && QUADRANTS[t.quadrant];
-  return el('div', { class: `todo-row${t.done ? ' done' : ''}` },
+  const row = el('div', { class: `todo-row${t.done ? ' done' : ''}`, 'data-id': t.id },
     el('button', {
       type: 'button',
       class: 'todo-check',
@@ -3359,7 +3431,31 @@ function todoRow(t, showSection) {
       el('span', { class: 'todo-meta' },
         q ? el('span', { class: `todo-tag p-${q.key}` }, `${q.title} · ${q.key.toUpperCase()}`) : null,
         showSection && t.section ? el('span', { class: 'todo-sec' }, t.section) : null)));
+  // Hold a to-do to drag it within its section or into another one (Lists view only).
+  if (!showSection) dragSort(row, {
+    scroller: $('#todo-list'),
+    itemSelector: '#todo-list .todo-row',
+    containerSelector: '#todo-list .todo-items',
+    onDrop: commitTodoOrder,
+  });
+  return row;
 }
+
+// After a drop: each section's to-dos take the order shown, and a to-do moved into another section joins it.
+function commitTodoOrder() {
+  const byId = new Map(state.todos.map(t => [t.id, t]));
+  const moves = [];
+  for (const box of document.querySelectorAll('#todo-list .todo-items')) {
+    [...box.querySelectorAll('.todo-row')].forEach((r, i) => moves.push([byId.get(r.dataset.id), box.dataset.section, i]));
+  }
+  todoChange(() => moves.forEach(([t, section, i]) => { if (t) { t.section = section; t.order = i; } }));
+}
+// After a section is dropped: the sections take the order shown.
+function commitSectionOrder() {
+  const names = [...document.querySelectorAll('#todo-list .todo-section[data-section]')].map(n => n.dataset.section).filter(Boolean);
+  todoChange(() => { state.todoSections = [...new Set([...names, ...todoSectionNames()])]; });
+}
+let todoEditing = false; // EDIT: sections shrink to their headers so they're easy to reorder
 
 function renderPriorityView(box) {
   const withPriority = state.todos.filter(t => t.priority && QUADRANTS[t.quadrant]);
@@ -3406,7 +3502,7 @@ function todoSheet(t, presetSection) {
       todoChange(() => {
         if (draft.section && !state.todoSections.includes(draft.section)) state.todoSections.push(draft.section);
         if (t) Object.assign(t, draft, { quadrant: draft.priority ? draft.quadrant : null });
-        else state.todos.push({ id: uid(), title: draft.title, section: draft.section, priority: draft.priority, quadrant: draft.priority ? draft.quadrant : null, done: false, createdAt: Date.now(), doneAt: null });
+        else state.todos.push({ id: uid(), title: draft.title, section: draft.section, priority: draft.priority, quadrant: draft.priority ? draft.quadrant : null, done: false, createdAt: Date.now(), order: Date.now(), doneAt: null });
       });
       closeSheet();
       toast(t ? 'To-do updated' : 'To-do added');
@@ -3470,14 +3566,26 @@ function newSectionSheet() {
 
 function sectionMenu(name) {
   const input = el('input', { class: 'text-input', type: 'text', maxlength: 30, value: name });
+  const colors = state.settings.todoSectionColors || (state.settings.todoSectionColors = {});
+  const pickColor = c => {
+    if (c) colors[name] = c; else delete colors[name];
+    save(); renderTodos();
+    $$('#sheet .swatch').forEach(s => s.classList.toggle('on', s.dataset.c === c));
+    $('#sheet .text-auto')?.classList.toggle('on', !c);
+  };
   openSheet(
     el('h3', {}, name),
     el('div', { class: 'sheet-label' }, 'RENAME', input),
+    el('div', { class: 'sheet-label' }, 'SECTION COLOR'),
+    el('div', { class: 'colors section-colors' }, PALETTE.flatMap(({ name: fam, shades }) => shades.map((c, i) =>
+      el('button', { type: 'button', class: `swatch${c === '#ffffff' ? ' swatch-white' : ''}${colors[name] === c ? ' on' : ''}`, style: `background:${c}`, 'data-c': c, 'aria-label': `${fam} ${i + 1}`, onclick: () => pickColor(c) })))),
+    el('button', { type: 'button', class: `text-auto${!colors[name] ? ' on' : ''}`, onclick: () => pickColor('') }, 'NO COLOR'),
     el('button', {
       class: 'sheet-btn primary',
       onclick: () => {
         const next = input.value.trim();
         if (next && next !== name) todoChange(() => {
+          if (colors[name]) { colors[next] = colors[name]; delete colors[name]; }
           state.todoSections = state.todoSections.map(s => (s === name ? next : s)).filter((s, i, a) => a.indexOf(s) === i);
           state.todos.forEach(t => { if (t.section === name) t.section = next; });
         });
@@ -3504,6 +3612,13 @@ $('#todo-view').addEventListener('click', e => {
   todoView = b.dataset.v; renderTodos();
 });
 $('#btn-todo-add').addEventListener('click', () => todoSheet(null));
+$('#btn-todo-edit').addEventListener('click', () => {
+  todoEditing = !todoEditing;
+  if (todoEditing) todoView = 'lists';
+  $('#btn-todo-edit').textContent = todoEditing ? 'DONE' : 'EDIT';
+  $('#btn-todo-edit').classList.toggle('on', todoEditing);
+  renderTodos();
+});
 $('#btn-todo-undo').addEventListener('click', todoUndo);
 $('#btn-todo-redo').addEventListener('click', todoRedo);
 
