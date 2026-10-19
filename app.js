@@ -2417,7 +2417,7 @@ function drawStreakImage(lines, yesterday, name) {
 }
 
 /* ---------- Stats: SHOW dropdown (goal types + groups, any mix) ---------- */
-const STAT_TYPES = [['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly'], ['year', 'Yearly'], ['date', 'By date'], ['hour', 'Hourly'], ['minute', 'Per minute']];
+const STAT_TYPES = [['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly'], ['year', 'Yearly'], ['date', 'Custom date'], ['hour', 'Hourly'], ['minute', 'Per minute']];
 const statType = t => (byDate(t) ? 'date' : t.reset);
 // settings.statsTypes / statsGroups: null = everything on, otherwise the list that's on
 function statsShows(t) {
@@ -2434,6 +2434,9 @@ function showSummary() {
   if (groups) parts.push(groups.length ? groups.map(g => (g === NO_GROUP ? 'No group' : g)).join(', ') : 'No groups');
   return parts.length ? parts.join(' · ') : 'All goals';
 }
+// SHOW panel: GOAL TYPES and GROUPS side by side (each "All" to start). Tapping one drops down its
+// chips; picked chips turn navy. From All, tapping a chip shows just that one; tap more to add them.
+let showOpen = 'types'; // which list is dropped down: 'types' | 'groups' | null
 function renderShowPanel() {
   $('#stats-show-value').textContent = showSummary();
   const panel = $('#stats-show-panel');
@@ -2442,25 +2445,41 @@ function renderShowPanel() {
   $('#stats-show').classList.toggle('open', open);
   if (!open) return;
   panel.innerHTML = '';
-  const typesHere = STAT_TYPES.filter(([k]) => state.tallies.some(t => statType(t) === k) || ['day', 'week', 'month', 'year'].includes(k));
-  const groupsHere = [...allGroupNames(), ...(state.tallies.some(t => !groupsOf(t).length) ? [NO_GROUP] : [])];
-  const section = (title, key, items) => {
-    const list = state.settings[key];
-    const isOn = k => !list || list.includes(k);
-    const flip = k => {
-      const cur = list ? [...list] : items.map(([v]) => v);
-      const next = cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k];
-      state.settings[key] = next.length === items.length ? null : next; // all on = null
-      save(); $('#stats-list').scrollTop = 0; renderStats();
-    };
-    return el('div', { class: 'show-section' },
-      el('div', { class: 'show-head' }, el('span', {}, title),
-        el('button', { type: 'button', class: 'show-all', onclick: () => { state.settings[key] = list ? null : []; save(); renderStats(); } }, list ? 'All' : 'None')),
-      items.map(([k, label]) => el('button', { type: 'button', class: `show-toggle${isOn(k) ? ' on' : ''}`, role: 'switch', 'aria-checked': String(isOn(k)), onclick: () => flip(k) },
-        el('span', {}, label), el('span', { class: 'switch', 'aria-hidden': 'true' }))));
+  const typesHere = STAT_TYPES.filter(([k]) => ['day', 'week', 'month', 'year', 'date'].includes(k) || state.tallies.some(t => statType(t) === k));
+  const groupsHere = [...allGroupNames(), ...(state.tallies.some(t => !groupsOf(t).length) ? [NO_GROUP] : [])].map(g => [g, g === NO_GROUP ? 'No group' : g]);
+  const lists = { types: ['GOAL TYPES', 'statsTypes', typesHere], groups: ['GROUPS', 'statsGroups', groupsHere] };
+  const picked = key => state.settings[key]; // null = All
+  const summary = (key, items) => {
+    const list = picked(key);
+    if (!list) return 'All';
+    const names = items.filter(([k]) => list.includes(k)).map(([, n]) => n);
+    return names.length <= 2 ? names.join(', ') : `${names.length} selected`;
   };
-  panel.append(section('GOAL TYPES', 'statsTypes', typesHere));
-  if (groupsHere.length) panel.append(section('GROUPS', 'statsGroups', groupsHere.map(g => [g, g === NO_GROUP ? 'No group' : g])));
+  const pick = (key, items, k) => {
+    const list = picked(key);
+    let next;
+    if (k === null) next = null; // All
+    else if (!list) next = [k]; // from All: just this one
+    else next = list.includes(k) ? list.filter(x => x !== k) : [...list, k];
+    if (next && (next.length === 0 || next.length === items.length)) next = null; // none or every one = All
+    state.settings[key] = next;
+    save(); $('#stats-list').scrollTop = 0; renderStats();
+  };
+  panel.append(el('div', { class: 'show-tabs' }, Object.entries(lists)
+    .filter(([id, [, , items]]) => id === 'types' || items.length)
+    .map(([id, [title, key, items]]) => el('button', {
+      type: 'button',
+      class: `show-tab${showOpen === id ? ' open' : ''}${picked(key) ? ' filtered' : ''}`,
+      'aria-expanded': String(showOpen === id),
+      onclick: () => { showOpen = showOpen === id ? null : id; renderShowPanel(); },
+    }, el('span', { class: 'show-tab-title' }, title), el('span', { class: 'show-tab-value' }, summary(key, items)), el('span', { class: 'show-chev', 'aria-hidden': 'true' }, '›')))));
+  if (showOpen && lists[showOpen][2].length) {
+    const [, key, items] = lists[showOpen];
+    const list = picked(key);
+    panel.append(el('div', { class: 'show-chips' },
+      el('button', { type: 'button', class: `group-chip${!list ? ' on' : ''}`, onclick: () => pick(key, items, null) }, 'All'),
+      items.map(([k, label]) => el('button', { type: 'button', class: `group-chip${list && list.includes(k) ? ' on' : ''}`, 'aria-pressed': String(!!(list && list.includes(k))), onclick: () => pick(key, items, k) }, label))));
+  }
 }
 $('#stats-show').addEventListener('click', () => { $('#stats-show-panel').classList.toggle('hidden'); renderShowPanel(); });
 
