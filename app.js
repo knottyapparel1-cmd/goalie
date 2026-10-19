@@ -265,17 +265,57 @@ function countsToward(t, ts) {
 }
 function countedEntries(t) { return entriesFor(t.id).filter(e => countsToward(t, e.ts)); }
 
+/* The day shown on the home page: today (null), or an earlier day picked with the arrows.
+   Cards then show the goal's period around that day, as it stood at the end of that day, and
+   logging adds entries to that day. */
+let homeDay = null;
+const homeRef = () => (homeDay ? new Date(homeDay.getTime() + 12 * 3600000) : new Date()); // noon on a past day
+const homeEnd = () => (homeDay ? addDays(homeDay, 1).getTime() : Infinity);
+const logTime = () => (homeDay ? homeRef().getTime() : Date.now());
+
+function nextPeriodStart(reset, from) {
+  switch (reset) {
+    case 'minute': return new Date(from.getTime() + 60000);
+    case 'hour': return new Date(from.getTime() + 3600000);
+    case 'day': return addDays(from, 1);
+    case 'week': return addDays(from, 7);
+    case 'month': return new Date(from.getFullYear(), from.getMonth() + 1, 1);
+    case 'year': return new Date(from.getFullYear() + 1, 0, 1);
+    default: return new Date(8.64e15);
+  }
+}
+// [from, to) of the goal's current period on the home page (minute/hour goals show the whole day
+// when looking back).
+function viewPeriod(t) {
+  const reset = homeDay && (t.reset === 'minute' || t.reset === 'hour') ? 'day' : t.reset;
+  const from = periodStart(reset, homeRef());
+  return [from.getTime(), Math.min(nextPeriodStart(reset, from).getTime(), homeEnd())];
+}
+
 function currentCount(t) {
-  const from = periodStart(t.reset).getTime();
-  return countedEntries(t).reduce((s, e) => (e.ts >= from ? s + e.value : s), 0);
+  const [from, to] = viewPeriod(t);
+  return countedEntries(t).reduce((s, e) => (e.ts >= from && e.ts < to ? s + e.value : s), 0);
+}
+
+// Card label for the period shown: THIS WEEK today, or WEEK OF OCT 12 when looking back.
+function periodLabel(t) {
+  if (!homeDay) return PERIOD_LABEL[t.reset] || 'TODAY';
+  const d = homeRef(), from = periodStart(t.reset === 'minute' || t.reset === 'hour' ? 'day' : t.reset, d);
+  switch (t.reset) {
+    case 'week': return `WEEK OF ${MONTH_SHORT[from.getMonth()].toUpperCase()} ${from.getDate()}`;
+    case 'month': return MONTH_LONG[d.getMonth()].toUpperCase();
+    case 'year': return String(d.getFullYear());
+    case 'never': return 'ALL TIME';
+    default: return `${DAY_NAMES[d.getDay()].toUpperCase()}, ${MONTH_SHORT[d.getMonth()].toUpperCase()} ${d.getDate()}`;
+  }
 }
 
 // Today isn't one of the goal's measured weekdays.
-const offDay = t => !measuredWeekdays(t).includes(new Date().getDay());
+const offDay = t => !measuredWeekdays(t).includes(homeRef().getDay());
 
 // By-date goals: the date has passed (the goal is locked with its result).
 const dueEndMs = t => addDays(fromYmd(t.dueDate), 1).getTime();
-const goalEnded = t => byDate(t) && Date.now() >= dueEndMs(t);
+const goalEnded = t => byDate(t) && Math.min(Date.now(), homeEnd()) >= dueEndMs(t);
 
 function lastEntry(id) {
   let last = null;
@@ -290,7 +330,7 @@ function hasActivityToday(id) {
 
 // ts: when it happened (now by default; the custom amount sheet can pick an earlier day).
 // replaceDay: remove what was already logged that day first (Settings → When logging custom dates).
-function logEntry(t, value, ts = Date.now(), replaceDay = false) {
+function logEntry(t, value, ts = logTime(), replaceDay = false) {
   if (isCheck(t)) {
     // One check-off per period, for past days as well as today.
     const period = periodStart(t.reset, new Date(ts)).getTime();
@@ -414,7 +454,42 @@ function renderToday(bumpId) {
   if (window.scrollY !== pageTop) window.scrollTo(0, pageTop);
 }
 
+// The date bar under the title: ‹ day › (tap the day to jump to a date), TODAY when looking back.
+function renderDayBar() {
+  const d = homeRef();
+  $('#day-label').textContent = `${homeDay ? '' : 'Today · '}${DAY_FULL[d.getDay()]}, ${MONTH_LONG[d.getMonth()]} ${d.getDate()}${d.getFullYear() !== new Date().getFullYear() ? ', ' + d.getFullYear() : ''}`;
+  $('#day-next').disabled = !homeDay;
+  $('#day-today').classList.toggle('hidden', !homeDay);
+  $('.day-bar').classList.toggle('past', !!homeDay);
+}
+function setHomeDay(day) {
+  const today = startOfDay(new Date());
+  homeDay = !day || startOfDay(day) >= today ? null : startOfDay(day);
+  renderToday();
+}
+$('#day-prev').addEventListener('click', () => setHomeDay(addDays(homeDay || startOfDay(new Date()), -1)));
+$('#day-next').addEventListener('click', () => homeDay && setHomeDay(addDays(homeDay, 1)));
+$('#day-today').addEventListener('click', () => setHomeDay(null));
+$('#day-label').addEventListener('click', () => {
+  const now = new Date();
+  const wheels = dateWheels(homeRef(), { minYear: now.getFullYear() - 5, maxYear: now.getFullYear() });
+  openSheet(
+    el('h3', {}, 'Go to a day'),
+    el('p', {}, 'See and log any earlier day. Cards show each goal as it stood at the end of that day.'),
+    wheels.node,
+    el('button', { class: 'sheet-btn primary', onclick: () => { closeSheet(); setHomeDay(wheels.get()); } }, 'Go'),
+    el('button', { class: 'sheet-btn', onclick: () => { closeSheet(); setHomeDay(null); } }, 'Today'),
+  );
+});
+// Coming back to Goalie after a while starts on today again.
+let hiddenAt = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') hiddenAt = Date.now();
+  else if (homeDay && Date.now() - hiddenAt > 10 * 60000) setHomeDay(null);
+});
+
 function drawToday(bumpId) {
+  renderDayBar();
   document.querySelectorAll('.drag-ghost').forEach(g => g.remove());
   const list = $('#tally-list');
   if (editMode && !state.tallies.length) editMode = false;
@@ -640,9 +715,11 @@ function tallyCard(t, bump) {
     bottom = last ? relTime(last.ts) : 'Not yet';
   }
 
+  // Met its goal (increase), or within its limit (decrease): big ✓; only + / − change it now.
+  const completed = (t.target > 0 || isCheck(t)) && goalReached(t, count);
   const card = el('div', {
     // wide-count: times / money like "12:30/30:00" — in list view the title gets its own full-width line
-    class: `card ${cardColorClass(t)}${tracksToday ? '' : ' off-day'}${bump ? ' bump' : ''}${!isCheck(t) && countText.length > 6 ? ' wide-count' : ''}`,
+    class: `card ${cardColorClass(t)}${tracksToday ? '' : ' off-day'}${completed ? ' completed' : ''}${bump ? ' bump' : ''}${!isCheck(t) && countText.length > 6 ? ' wide-count' : ''}`,
     style: cardColorStyle(t),
     role: 'button',
     tabindex: '0',
@@ -654,15 +731,19 @@ function tallyCard(t, bump) {
   el('div', { class: 'card-top' },
     el('div', { class: 'card-name' + nameSizeClass(t.name) }, goalTitle(t, goalReached(t, count))),
     el('div', { class: 'card-period' }, goalEnded(t) ? `ENDED ${goalReached(t, count) ? '✓' : '✗'}`
-      : byDate(t) ? `BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}` : PERIOD_LABEL[t.reset] || 'TODAY',
+      : byDate(t) ? `BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}` : periodLabel(t),
       t.dueDate && !byDate(t) ? el('span', { class: 'card-due' }, `· BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}`) : null,
       goalBadge(t, count))),
-  el('div', { class: `card-count ${sizeClass}` }, isCheck(t) ? checkMark(count >= 1) : countText),
+  completed
+    ? el('div', { class: 'card-count card-done' }, checkMark(true),
+      el('span', { class: 'done-label' }, 'GOAL COMPLETED'),
+      isCheck(t) ? null : el('span', { class: 'done-count' }, countText))
+    : el('div', { class: `card-count ${sizeClass}` }, isCheck(t) ? checkMark(count >= 1) : countText),
   cardFoot(t, bottom),
   editMode ? deleteButton(t) : null);
 
   if (editMode) attachDrag(card, t);
-  else attachPress(card, () => onTap(t), () => tallyMenu(t));
+  else attachPress(card, () => (completed && !goalEnded(t) ? toast('Goal completed. Use + or − to change it.') : onTap(t)), () => tallyMenu(t));
   return card;
 }
 
@@ -871,10 +952,10 @@ function attachPress(node, onTapFn, onLongFn) {
 }
 
 function lastInPeriod(t) {
-  const from = periodStart(t.reset).getTime();
+  const [from, to] = viewPeriod(t);
   let last = null;
   for (const e of countedEntries(t)) {
-    if (e.ts >= from && (!last || e.ts > last.ts)) last = e;
+    if (e.ts >= from && e.ts < to && (!last || e.ts > last.ts)) last = e;
   }
   return last;
 }
@@ -918,8 +999,8 @@ function onTap(t) {
   if (offDay(t)) {
     // Logs on days the goal doesn't measure don't count toward it; check before logging one.
     openSheet(
-      el('h3', {}, `${DAY_FULL[new Date().getDay()]} isn't a measured day`),
-      el('p', {}, `${t.name} is measured on ${daysSummary(measuredWeekdays(t))}. Anything logged today is kept in its history but won't count toward the goal.`),
+      el('h3', {}, `${DAY_FULL[homeRef().getDay()]} isn't a measured day`),
+      el('p', {}, `${t.name} is measured on ${daysSummary(measuredWeekdays(t))}. Anything logged ${homeDay ? 'that day' : 'today'} is kept in its history but won't count toward the goal.`),
       el('button', { class: 'sheet-btn primary', onclick: () => { closeSheet(); setTimeout(() => logNow(t), 300); } }, 'Log anyway'),
       el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
     );
@@ -970,7 +1051,7 @@ function repeatSheet(t) {
 
 // Once per ended goal, ask whether to repeat it (when nothing else is open).
 function askAboutEndedGoals() {
-  if (document.querySelector('.screen.modal.active, .sheet.show')) return;
+  if (document.querySelector('.screen.modal.active, .sheet.show, #sheet[data-open]')) return;
   const t = state.tallies.find(x => goalEnded(x) && x.endAsked !== x.dueDate);
   if (t) repeatSheet(t);
 }
@@ -991,7 +1072,7 @@ function promptValue(t) {
       : replacing() ? `Replaces the ${amountText(t, already)} already logged that day.`
       : `Adds to the ${amountText(t, already)} already logged that day.`;
   };
-  const wheels = dateWheels(now, { minYear: now.getFullYear() - 5, maxYear: now.getFullYear(), onChange: onDay });
+  const wheels = dateWheels(homeRef(), { minYear: now.getFullYear() - 5, maxYear: now.getFullYear(), onChange: onDay });
   const error = el('p', { class: 'form-error hidden' });
   const submit = () => {
     const read = field.read();
@@ -1449,6 +1530,30 @@ function amountField(t, value, { placeholder = '' } = {}) {
   };
 }
 
+// Lists in text boxes: Enter after "1. …" starts "2. ", after "- …" or "• …" another bullet.
+// Enter on a line that's only a number or bullet removes it and ends the list.
+function autoList(area) {
+  area.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    const { selectionStart: a, selectionEnd: b, value } = area;
+    if (a !== b) return;
+    const lineStart = value.lastIndexOf('\n', a - 1) + 1;
+    const lineEnd = value.indexOf('\n', a) === -1 ? value.length : value.indexOf('\n', a);
+    const m = value.slice(lineStart, lineEnd).match(/^(\s*)(?:(\d+)([.)])|([-•]))(?: (.*))?$/);
+    if (!m) return;
+    e.preventDefault();
+    const [, indent, n, sep, bullet, text = ''] = m;
+    if (!text.trim() && a === lineEnd) {
+      area.setRangeText('', lineStart, lineEnd, 'end'); // empty item: end the list
+    } else {
+      area.setRangeText(`\n${indent}${n ? `${+n + 1}${sep}` : bullet} `, a, a, 'end');
+    }
+    area.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+autoList($('#f-examples'));
+autoList($('#f-nonexamples'));
+
 function joinList(items) {
   if (items.length <= 1) return items.join('');
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
@@ -1486,7 +1591,7 @@ function renderGoalDesc() {
   const text = goalDescription(form);
   p.textContent = text || 'Enter a goal title to see your goal.';
   p.classList.toggle('empty-desc', !text);
-  renderColorPreview(); // the preview card shows the title, goal and period too
+  schedulePreview(); // the preview card shows the title, goal and period too
 }
 
 function fmtTime(hhmm) {
@@ -1506,8 +1611,17 @@ PALETTE.forEach(({ name, shades }) => shades.forEach((c, i) => {
 }));
 $('#text-auto').addEventListener('click', () => { form.textColor = ''; syncForm(); });
 
+// While typing, redraw the preview a moment after the last key, so the page doesn't shift on every
+// letter (the card can change height as the title wraps).
+let previewTimer = null;
+function schedulePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(renderColorPreview, 350);
+}
+
 // Mini card showing the current goal + text colors.
 function renderColorPreview() {
+  clearTimeout(previewTimer);
   const box = $('#color-preview');
   box.innerHTML = '';
   // The real home-screen card (same builder, same count, buttons and bottom text), shrunk to fit.
@@ -1578,7 +1692,7 @@ $('[data-field="days"]').addEventListener('click', e => {
 });
 
 $('#f-name').addEventListener('input', e => { form.name = e.target.value; validateForm(); renderGoalDesc(); });
-$('#f-default').addEventListener('input', e => { form.defaultCount = parseFloat(e.target.value); validateForm(); renderColorPreview(); });
+$('#f-default').addEventListener('input', e => { form.defaultCount = parseFloat(e.target.value); validateForm(); schedulePreview(); });
 $('#f-goal').addEventListener('input', e => {
   const v = parseFloat(e.target.value);
   form.target = isFinite(v) ? v : null;
@@ -1586,7 +1700,7 @@ $('#f-goal').addEventListener('input', e => {
 });
 $('#f-examples').addEventListener('input', e => { form.examples = e.target.value; });
 $('#f-nonexamples').addEventListener('input', e => { form.nonExamples = e.target.value; });
-$('#f-bottom').addEventListener('input', e => { form.bottomText = e.target.value; renderColorPreview(); });
+$('#f-bottom').addEventListener('input', e => { form.bottomText = e.target.value; schedulePreview(); });
 $('#f-unit').addEventListener('input', e => {
   form.customUnit = e.target.value;
   validateForm(); renderGoalDesc();
@@ -1886,24 +2000,16 @@ function drawStats() {
   const name = (state.settings.name || '').trim();
   $('#stats-title').textContent = name ? `Here are your STATS, ${name}!` : 'Here are your STATS!';
   const r = statsRange();
-  $('#range-label').textContent = rangeLabel(r);
-  $('#range-next').disabled = statsState.offset >= 0;
+  $('#range-label').textContent = statsState.view === 'calendar' ? calendarLabel() : rangeLabel(r);
+  $('#range-next').disabled = (statsState.view === 'calendar' ? calState.offset : statsState.offset) >= 0;
   $$('#range-tabs button').forEach(b => b.classList.toggle('on', b.dataset.v === statsState.range));
   $$('.view-btn').forEach(b => b.classList.toggle('on', b.dataset.view === statsState.view));
 
-  // Which goals to show: the Stats page has its own group and period filters.
-  const groupNames = allGroupNames();
-  let sg = state.settings.statsGroupFilter || '';
-  if (sg && sg !== NO_GROUP && !groupNames.includes(sg)) sg = state.settings.statsGroupFilter = '';
-  const sf = state.settings.statsFilter || 'all';
-  renderGroupChips(groupNames, sg, $('#stats-group-chips'), value => {
-    state.settings.statsGroupFilter = value; save(); $('#stats-list').scrollTop = 0; renderStats();
-  });
-  $$('#stats-filter button').forEach(b => {
-    const on = b.dataset.v === sf;
-    b.classList.toggle('on', on);
-    b.setAttribute('aria-selected', String(on));
-  });
+  // Which goals to show: the Show dropdown (goal types and groups, any mix).
+  renderShowPanel();
+  const calendar = statsState.view === 'calendar';
+  $('#range-tabs').classList.toggle('hidden', calendar);
+  statsModel = { kind: calendar ? 'calendar' : statsState.view, rangeText: '', cards: [] };
 
   const list = $('#stats-list');
   list.innerHTML = '';
@@ -1911,9 +2017,11 @@ function drawStats() {
     list.append(el('div', { class: 'empty' }, el('strong', {}, 'No data yet'), 'Set a goal to see your stats.'));
     return;
   }
-  const shown = state.tallies.filter(t => matchesFilter(t, sf) && matchesGroup(t, sg));
+  const shown = state.tallies.filter(statsShows);
+  if (calendar) { renderCalendar(list, shown); return; }
+  statsModel.rangeText = rangeLabel(r);
   if (!shown.length) {
-    list.append(el('div', { class: 'empty' }, el('strong', {}, 'No goals here'), 'Pick a different group, or ALL in the filter at the top.'));
+    list.append(el('div', { class: 'empty' }, el('strong', {}, 'No goals here'), 'Turn on more goal types or groups in SHOW at the top.'));
     return;
   }
 
@@ -1976,6 +2084,7 @@ function drawStats() {
       }
     }
     const scale = chartScale(t, values, goal);
+    statsModel.cards.push({ t, values, labels: bucketLabels(r), currentIdx, scale, goal, caption, sub: card.querySelector('.stat-sub').textContent, isBars });
     card.append(isBars
       ? barChart(values, bucketLabels(r), currentIdx, pick, scale, goal, caption)
       : lineChart(t, values, bucketLabels(r), currentIdx, pick, scale, goal, caption));
@@ -2204,20 +2313,21 @@ function lineChart(t, sums, labels, currentIdx, onPick, max, goal, caption) {
     el('div', { class: 'chart' }, yAxis, el('div', { class: 'plot line-plot' }, plot, xl)));
 }
 
-$('#stats-filter').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
-  state.settings.statsFilter = b.dataset.v;
-  save();
-  $('#stats-list').scrollTop = 0;
-  renderStats();
-});
 
 $('#range-tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   statsState.range = b.dataset.v; statsState.offset = 0; renderStats();
 });
-$('#range-prev').addEventListener('click', () => { statsState.offset--; renderStats(); });
-$('#range-next').addEventListener('click', () => { if (statsState.offset < 0) { statsState.offset++; renderStats(); } });
+// ‹ › (and swipes) move the charts' period, or the calendar's month / year / five years.
+function shiftStats(step) {
+  const o = statsState.view === 'calendar' ? calState : statsState;
+  if (step > 0 && o.offset >= 0) return false;
+  o.offset += step;
+  renderStats();
+  return true;
+}
+$('#range-prev').addEventListener('click', () => shiftStats(-1));
+$('#range-next').addEventListener('click', () => shiftStats(1));
 $$('.view-btn').forEach(b => b.addEventListener('click', () => { statsState.view = b.dataset.view; renderStats(); }));
 
 // Swipe left/right on stats to change period
@@ -2230,12 +2340,404 @@ $$('.view-btn').forEach(b => b.addEventListener('click', () => { statsState.view
     const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
     sx = null;
     if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx)) return;
-    if (dx > 0) statsState.offset--;
-    else if (statsState.offset < 0) statsState.offset++;
-    else return;
-    renderStats();
+    shiftStats(dx > 0 ? -1 : 1);
   });
 })();
+
+/* ---------- Streaks ----------
+   How many periods in a row a goal has been completed (met, or within the limit for decrease
+   goals), counting back from the current period (which counts once it's completed). Days a goal
+   doesn't measure are skipped, not counted as misses. */
+function goalStreak(t) {
+  if (byDate(t) || !(t.target > 0 || isCheck(t)) || !['day', 'week', 'month', 'year'].includes(t.reset)) return 0;
+  const startDay = goalStartDay(t), entries = countedEntries(t);
+  const done = (from, to) => {
+    const total = entries.reduce((s, e) => (e.ts >= from && e.ts < to ? s + e.value : s), 0);
+    if (isCheck(t)) return t.direction === 'decrease' ? total === 0 : total >= 1;
+    return t.direction === 'decrease' ? total <= t.target : total >= t.target;
+  };
+  let from = periodStart(t.reset), streak = 0;
+  for (let i = 0; i < 1000; i++) {
+    const to = nextPeriodStart(t.reset, from);
+    if (to.getTime() <= startDay) break; // before the goal existed
+    const measured = t.reset !== 'day' || measuredWeekdays(t).includes(from.getDay());
+    if (measured) {
+      if (done(from.getTime(), to.getTime())) streak++;
+      else if (i > 0) break; // the current period can still be completed
+    }
+    from = periodStart(t.reset, new Date(from.getTime() - 1));
+  }
+  return streak;
+}
+const STREAK_UNIT = { day: ['day', 'days'], week: ['week', 'weeks'], month: ['month', 'months'], year: ['year', 'years'] };
+function streakLine(t, n) {
+  const [one, many] = STREAK_UNIT[t.reset];
+  return t.direction === 'decrease' && !isCheck(t) ? `${n} ${n === 1 ? one : many} within your limit` : `${n} ${n === 1 ? one : many} in a row`;
+}
+
+// The first time Goalie is opened each day: what you're doing well at.
+function streakPopup() {
+  const today = dayKey(new Date());
+  if (state.settings.streakDay === today || !state.tallies.length) return;
+  state.settings.streakDay = today; save();
+  const streaks = state.tallies.map(t => ({ t, n: goalStreak(t) })).filter(x => x.n >= 2).sort((a, b) => b.n - a.n).slice(0, 6);
+  // yesterday's daily goals
+  const y0 = addDays(startOfDay(new Date()), -1).getTime(), y1 = startOfDay(new Date()).getTime();
+  const daily = state.tallies.filter(t => t.reset === 'day' && !byDate(t) && (t.target > 0 || isCheck(t)) && goalStartDay(t) <= y0 && measuredWeekdays(t).includes(new Date(y0).getDay()));
+  const doneYesterday = daily.filter(t => { const n = countedEntries(t).reduce((s, e) => (e.ts >= y0 && e.ts < y1 ? s + e.value : s), 0); return isCheck(t) ? (t.direction === 'decrease' ? n === 0 : n >= 1) : (t.direction === 'decrease' ? n <= t.target : n >= t.target); });
+  if (!streaks.length && !doneYesterday.length) return; // nothing to celebrate yet
+  const name = (state.settings.name || '').trim();
+  const lines = streaks.map(({ t, n }) => ({ name: t.name, color: t.color, text: streakLine(t, n), n }));
+  const yesterday = daily.length ? `Yesterday you completed ${doneYesterday.length} of ${daily.length} daily goal${daily.length === 1 ? '' : 's'}.` : '';
+  openSheet(
+    el('h3', {}, name ? `Nice work, ${name}!` : 'Nice work!'),
+    el('p', {}, streaks.length ? 'Here’s what you’re doing well at:' : yesterday),
+    streaks.length ? el('div', { class: 'streaks' }, lines.map(l => el('div', { class: 'streak-row' },
+      el('span', { class: 'streak-n', style: `background:${l.color};color:${inkClass(l.color) === 'on-light' ? '#1c2a4a' : '#fff'}` }, String(l.n)),
+      el('span', { class: 'streak-text' }, el('strong', {}, l.name), el('span', {}, l.text))))) : null,
+    streaks.length && yesterday ? el('p', {}, yesterday) : null,
+    el('button', { class: 'sheet-btn primary', onclick: closeSheet }, 'Let’s go'),
+    el('button', { class: 'sheet-btn', onclick: () => shareImage(drawStreakImage(lines, yesterday, name), 'goalie-streaks') }, 'Share'),
+  );
+}
+function drawStreakImage(lines, yesterday, name) {
+  const { c, g } = imageCanvas(270 + lines.length * 140 + (yesterday ? 100 : 0) + 120);
+  let y = imageHeader(g, name ? `${name}’s streaks` : 'My streaks', longDate(toDateInput(new Date())));
+  for (const l of lines) {
+    g.fillStyle = l.color; g.beginPath(); g.arc(PAD + 50, y + 50, 50, 0, Math.PI * 2); g.fill();
+    g.fillStyle = inkClass(l.color) === 'on-light' ? '#1c2a4a' : '#fff'; g.font = `800 40px ${FONT}`; g.textAlign = 'center';
+    g.fillText(String(l.n), PAD + 50, y + 64); g.textAlign = 'left';
+    g.fillStyle = '#1c2a4a'; g.font = `700 40px ${FONT}`; g.fillText(l.name, PAD + 130, y + 42);
+    g.fillStyle = '#6b7280'; g.font = `600 30px ${FONT}`; g.fillText(l.text, PAD + 130, y + 86);
+    y += 140;
+  }
+  if (yesterday) { g.fillStyle = '#1c2a4a'; g.font = `600 30px ${FONT}`; g.fillText(yesterday, PAD, y + 40); y += 100; }
+  imageFooter(g, y + 40);
+  return c;
+}
+
+/* ---------- Stats: SHOW dropdown (goal types + groups, any mix) ---------- */
+const STAT_TYPES = [['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly'], ['year', 'Yearly'], ['date', 'By date'], ['hour', 'Hourly'], ['minute', 'Per minute']];
+const statType = t => (byDate(t) ? 'date' : t.reset);
+// settings.statsTypes / statsGroups: null = everything on, otherwise the list that's on
+function statsShows(t) {
+  const types = state.settings.statsTypes, groups = state.settings.statsGroups;
+  if (types && !types.includes(statType(t))) return false;
+  if (!groups) return true;
+  const gs = groupsOf(t);
+  return gs.length ? gs.some(g => groups.includes(g)) : groups.includes(NO_GROUP);
+}
+function showSummary() {
+  const types = state.settings.statsTypes, groups = state.settings.statsGroups;
+  const parts = [];
+  if (types) parts.push(types.length ? STAT_TYPES.filter(([k]) => types.includes(k)).map(([, n]) => n).join(', ') : 'No types');
+  if (groups) parts.push(groups.length ? groups.map(g => (g === NO_GROUP ? 'No group' : g)).join(', ') : 'No groups');
+  return parts.length ? parts.join(' · ') : 'All goals';
+}
+function renderShowPanel() {
+  $('#stats-show-value').textContent = showSummary();
+  const panel = $('#stats-show-panel');
+  const open = !panel.classList.contains('hidden');
+  $('#stats-show').setAttribute('aria-expanded', String(open));
+  $('#stats-show').classList.toggle('open', open);
+  if (!open) return;
+  panel.innerHTML = '';
+  const typesHere = STAT_TYPES.filter(([k]) => state.tallies.some(t => statType(t) === k) || ['day', 'week', 'month', 'year'].includes(k));
+  const groupsHere = [...allGroupNames(), ...(state.tallies.some(t => !groupsOf(t).length) ? [NO_GROUP] : [])];
+  const section = (title, key, items) => {
+    const list = state.settings[key];
+    const isOn = k => !list || list.includes(k);
+    const flip = k => {
+      const cur = list ? [...list] : items.map(([v]) => v);
+      const next = cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k];
+      state.settings[key] = next.length === items.length ? null : next; // all on = null
+      save(); $('#stats-list').scrollTop = 0; renderStats();
+    };
+    return el('div', { class: 'show-section' },
+      el('div', { class: 'show-head' }, el('span', {}, title),
+        el('button', { type: 'button', class: 'show-all', onclick: () => { state.settings[key] = list ? null : []; save(); renderStats(); } }, list ? 'All' : 'None')),
+      items.map(([k, label]) => el('button', { type: 'button', class: `show-toggle${isOn(k) ? ' on' : ''}`, role: 'switch', 'aria-checked': String(isOn(k)), onclick: () => flip(k) },
+        el('span', {}, label), el('span', { class: 'switch', 'aria-hidden': 'true' }))));
+  };
+  panel.append(section('GOAL TYPES', 'statsTypes', typesHere));
+  if (groupsHere.length) panel.append(section('GROUPS', 'statsGroups', groupsHere.map(g => [g, g === NO_GROUP ? 'No group' : g])));
+}
+$('#stats-show').addEventListener('click', () => { $('#stats-show-panel').classList.toggle('hidden'); renderShowPanel(); });
+
+/* ---------- Stats: calendar ----------
+   Colors show the share of goals completed in each day / week / month / year:
+   red 0–33%, orange 34–66%, yellow 67–99%, green 100%. Settings decides whether a goal counts only
+   once it's completed, or by how far along it got. */
+const calState = { type: 'day', offset: 0 };
+let statsModel = null; // what's on screen, for Share
+const CAL_TYPES = [['day', 'DAILY'], ['week', 'WEEKLY'], ['month', 'MONTHLY'], ['year', 'YEARLY']];
+const PCT_COLORS = [[33, '#ef4444'], [66, '#f97316'], [99, '#facc15'], [100, '#22c55e']];
+const pctColor = p => (p == null ? null : PCT_COLORS.find(([max]) => Math.round(p) <= max)[1]);
+
+function calendarRange() {
+  const now = new Date(), o = calState.offset;
+  if (calState.type === 'day' || calState.type === 'week') {
+    const start = new Date(now.getFullYear(), now.getMonth() + o, 1);
+    return { start, end: new Date(start.getFullYear(), start.getMonth() + 1, 1) };
+  }
+  if (calState.type === 'month') return { start: new Date(now.getFullYear() + o, 0, 1), end: new Date(now.getFullYear() + o + 1, 0, 1) };
+  return { start: new Date(now.getFullYear() + o * 5 - 4, 0, 1), end: new Date(now.getFullYear() + o * 5 + 1, 0, 1) };
+}
+function calendarLabel() {
+  const { start, end } = calendarRange();
+  if (calState.type === 'day' || calState.type === 'week') return `${MONTH_LONG[start.getMonth()]} ${start.getFullYear()}`;
+  if (calState.type === 'month') return String(start.getFullYear());
+  return `${start.getFullYear()} – ${end.getFullYear() - 1}`;
+}
+
+// How one goal did in one period: 0..1, or null when it wasn't measured then.
+function periodScore(t, from, to) {
+  if (goalStartDay(t) >= to) return null; // the goal didn't exist yet
+  if (calState.type === 'day' && !measuredWeekdays(t).includes(new Date(from).getDay())) return null;
+  const total = countedEntries(t).reduce((s, e) => (e.ts >= from && e.ts < to ? s + e.value : s), 0);
+  const down = t.direction === 'decrease';
+  let progress;
+  if (isCheck(t)) progress = down ? (total === 0 ? 1 : 0) : (total >= 1 ? 1 : 0);
+  else if (down) progress = total <= t.target ? 1 : t.target / total;
+  else progress = Math.min(1, total / t.target);
+  if ((state.settings.calendarMode || 'complete') === 'complete') return progress >= 1 ? 1 : 0;
+  return progress;
+}
+// Average score of all the goals measured in a period, as a percentage (null: none measured / future).
+function periodPct(goals, from, to) {
+  if (from > Date.now()) return null;
+  const scores = goals.map(t => periodScore(t, from, to)).filter(v => v != null);
+  return scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) * 100 : null;
+}
+
+function renderCalendar(list, shown) {
+  const type = calState.type;
+  const goals = shown.filter(t => !byDate(t) && t.reset === type && (t.target > 0 || isCheck(t)));
+  const { start, end } = calendarRange();
+  const now = Date.now();
+  const cells = []; // also used for Share: { label, sub, pct, from, to, current }
+  const box = el('div', { class: `cal cal-${type}` });
+  const pick = cell => calendarDaySheet(goals, cell);
+
+  if (type === 'day') {
+    const first = startOfWeek(start);
+    box.append(el('div', { class: 'cal-grid cal-head' }, Array.from({ length: 7 }, (_, i) => el('span', {}, DAY_SHORT[(state.settings.weekStart + i) % 7]))));
+    const grid = el('div', { class: 'cal-grid' });
+    for (let d = new Date(first); d < end || d.getDay() !== state.settings.weekStart; d = addDays(d, 1)) {
+      const inMonth = d >= start && d < end, from = d.getTime(), to = addDays(d, 1).getTime();
+      const cell = { label: String(d.getDate()), from, to, pct: inMonth ? periodPct(goals, from, to) : null, current: now >= from && now < to, out: !inMonth };
+      cells.push(cell);
+      grid.append(calCell(cell, inMonth ? () => pick(cell) : null));
+      if (d >= end && d.getDay() === (state.settings.weekStart + 6) % 7) break;
+    }
+    box.append(grid);
+  } else if (type === 'week') {
+    for (let w = startOfWeek(start); w < end; w = addDays(w, 7)) {
+      const last = addDays(w, 6), from = w.getTime(), to = addDays(w, 7).getTime();
+      const cell = { label: `${DAY_NAMES[w.getDay()]} ${MONTH_SHORT[w.getMonth()]} ${w.getDate()} – ${DAY_NAMES[last.getDay()]} ${MONTH_SHORT[last.getMonth()]} ${last.getDate()}`, from, to, pct: periodPct(goals, from, to), current: now >= from && now < to };
+      cells.push(cell);
+      box.append(calCell(cell, () => pick(cell), 'cal-bar'));
+    }
+  } else if (type === 'month') {
+    const grid = el('div', { class: 'cal-tiles' });
+    for (let m = 0; m < 12; m++) {
+      const f = new Date(start.getFullYear(), m, 1), from = f.getTime(), to = new Date(start.getFullYear(), m + 1, 1).getTime();
+      const cell = { label: MONTH_SHORT[m], from, to, pct: periodPct(goals, from, to), current: now >= from && now < to };
+      cells.push(cell);
+      grid.append(calCell(cell, () => pick(cell)));
+    }
+    box.append(grid);
+  } else {
+    const grid = el('div', { class: 'cal-tiles cal-years' });
+    for (let y = start.getFullYear(); y < end.getFullYear(); y++) {
+      const from = new Date(y, 0, 1).getTime(), to = new Date(y + 1, 0, 1).getTime();
+      const cell = { label: String(y), from, to, pct: periodPct(goals, from, to), current: now >= from && now < to };
+      cells.push(cell);
+      grid.append(calCell(cell, () => pick(cell)));
+    }
+    box.append(grid);
+  }
+
+  const scored = cells.filter(c => !c.out && c.pct != null);
+  const avg = scored.length ? scored.reduce((a, c) => a + c.pct, 0) / scored.length : null;
+  const noun = { day: 'daily', week: 'weekly', month: 'monthly', year: 'yearly' }[type];
+  const summary = !goals.length ? `No ${noun} goals with a goal amount are showing. Check SHOW at the top.`
+    : avg == null ? 'Nothing to score yet in this period.'
+    : `Average: ${Math.round(avg)}% of ${noun} goals ${(state.settings.calendarMode || 'complete') === 'complete' ? 'completed' : 'progress'} · ${goals.length} goal${goals.length === 1 ? '' : 's'}`;
+  statsModel = { kind: 'calendar', type, rangeText: calendarLabel(), cells, summary, goals };
+
+  list.append(
+    el('div', { class: 'seg tabs cal-types' }, CAL_TYPES.map(([k, label]) =>
+      el('button', { type: 'button', class: k === type ? 'on' : '', onclick: () => { calState.type = k; calState.offset = 0; renderStats(); } }, label))),
+    el('p', { class: 'cal-summary' }, summary),
+    box,
+    el('div', { class: 'cal-legend' }, [['0–33%', '#ef4444'], ['34–66%', '#f97316'], ['67–99%', '#facc15'], ['100%', '#22c55e']]
+      .map(([t, c]) => el('span', {}, el('i', { style: `background:${c}` }), t))));
+}
+function calCell(cell, onPick, cls = 'cal-cell') {
+  const color = pctColor(cell.pct);
+  return el('button', {
+    type: 'button',
+    class: `${cls}${cell.out ? ' out' : ''}${cell.current ? ' current' : ''}${color ? ' scored' : ''}${color === '#facc15' ? ' light' : ''}`,
+    style: color ? `background:${color}` : '',
+    disabled: !onPick,
+    onclick: onPick || null,
+  }, el('span', { class: 'cal-l' }, cell.label), cell.pct != null && !cell.out ? el('span', { class: 'cal-p' }, `${Math.round(cell.pct)}%`) : null);
+}
+// Tap a day / week / month / year: how each goal did.
+function calendarDaySheet(goals, cell) {
+  const rows = goals.map(t => ({ t, score: periodScore(t, cell.from, cell.to),
+    total: countedEntries(t).reduce((s, e) => (e.ts >= cell.from && e.ts < cell.to ? s + e.value : s), 0) }))
+    .filter(r => r.score != null);
+  const title = calState.type === 'day' ? (() => { const d = new Date(cell.from); return `${DAY_FULL[d.getDay()]}, ${MONTH_SHORT[d.getMonth()]} ${d.getDate()}`; })() : cell.label;
+  openSheet(
+    el('h3', {}, title),
+    el('p', {}, cell.pct == null ? 'Nothing was measured then.' : `${Math.round(cell.pct)}% · ${rows.filter(r => r.score >= 1).length} of ${rows.length} completed`),
+    el('div', { class: 'hist' }, rows.map(({ t, score, total }) => el('div', { class: 'hist-row' },
+      el('span', { class: 'cal-dot', style: `background:${score >= 1 ? '#22c55e' : pctColor(score * 100)}` }),
+      el('span', { class: 'hist-when' }, el('strong', {}, t.name)),
+      el('span', { class: 'hist-amount' }, isCheck(t) ? (score >= 1 ? '✓' : '✗') : `${num(t, total)}/${num(t, t.target)}`)))),
+    el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Done'),
+  );
+}
+
+/* ---------- Share: a picture of whatever Stats is showing ---------- */
+$('#stats-share').addEventListener('click', () => shareImage(drawStatsImage(), 'goalie-stats'));
+
+async function shareImage(canvas, name) {
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+  if (!blob) { toast('Couldn’t make the picture'); return; }
+  const file = new File([blob], `${name}-${toDateInput(new Date())}.png`, { type: 'image/png' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'My Goalie progress' }); return; }
+  } catch (err) { if (err && err.name === 'AbortError') return; }
+  const url = URL.createObjectURL(file);
+  const a = el('a', { href: url, download: file.name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+// Canvas helpers (the picture is drawn directly, at 1080px wide).
+const W = 1080, PAD = 60, FONT = 'Outfit, -apple-system, sans-serif';
+function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function imageCanvas(height) {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = height;
+  const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, height);
+  return { c, g };
+}
+function imageHeader(g, title, subtitle) {
+  g.fillStyle = '#1c2a4a'; g.textBaseline = 'alphabetic';
+  g.font = `800 34px ${FONT}`; g.fillText('GOALIE', PAD, 92);
+  g.font = `700 56px ${FONT}`; g.fillText(title, PAD, 170);
+  g.fillStyle = '#6b7280'; g.font = `600 30px ${FONT}`; g.fillText(subtitle, PAD, 220);
+  return 270;
+}
+function imageFooter(g, y) {
+  g.fillStyle = '#9aa0a8'; g.font = `600 26px ${FONT}`; g.textAlign = 'center';
+  g.fillText(`Made with Goalie · ${longDate(toDateInput(new Date()))}`, W / 2, y); g.textAlign = 'left';
+}
+function inkFor(t) {
+  if (t.textColor) return { ink: t.textColor, soft: t.textColor };
+  return inkClass(t.color) === 'on-light' ? { ink: '#1c2a4a', soft: 'rgba(28,42,74,.6)' } : { ink: '#ffffff', soft: 'rgba(255,255,255,.7)' };
+}
+
+function drawStatsImage() {
+  const m = statsModel || { kind: 'bars', cards: [] };
+  if (m.kind === 'calendar') return drawCalendarImage(m);
+  const CARD_H = 470, GAP = 30;
+  const { c, g } = imageCanvas(270 + Math.max(1, m.cards.length) * (CARD_H + GAP) + 90);
+  let y = imageHeader(g, m.rangeText || 'My stats', showSummary());
+  if (!m.cards.length) { g.fillStyle = '#6b7280'; g.font = `600 32px ${FONT}`; g.fillText('No goals showing.', PAD, y + 60); }
+  for (const card of m.cards) { drawChartCard(g, card, y, CARD_H); y += CARD_H + GAP; }
+  imageFooter(g, y + 40);
+  return c;
+}
+function drawChartCard(g, { t, values, labels, currentIdx, scale, goal, caption, sub, isBars }, y, H) {
+  const { ink, soft } = inkFor(t);
+  g.fillStyle = t.color; roundRect(g, PAD, y, W - 2 * PAD, H, 40); g.fill();
+  if (luminance(t.color) > 0.85) { g.strokeStyle = '#e3e4e6'; g.lineWidth = 3; g.stroke(); }
+  g.fillStyle = ink; g.font = `700 44px ${FONT}`; g.fillText(`${t.name} ${t.direction === 'decrease' ? '↓' : '↑'}`, PAD + 40, y + 70);
+  g.font = `700 24px ${FONT}`; g.fillStyle = ink; g.fillText(sub, PAD + 40, y + 110);
+  if (caption) { g.fillStyle = soft; g.font = `800 20px ${FONT}`; g.fillText(caption, PAD + 40, y + 146); }
+  // chart area
+  const x0 = PAD + 110, x1 = W - PAD - 40, top = y + 170, bot = y + H - 70, ch = bot - top;
+  const rows = axisRows(scale);
+  g.font = `700 22px ${FONT}`; g.textAlign = 'right';
+  for (let i = 0; i <= rows; i++) {
+    const yy = top + (ch * i) / rows;
+    g.fillStyle = soft; g.fillText(axisNum(scale * (1 - i / rows)), x0 - 18, yy + 8);
+    g.strokeStyle = 'rgba(0,0,0,.08)'; g.lineWidth = 2; g.beginPath(); g.moveTo(x0, yy); g.lineTo(x1, yy); g.stroke();
+  }
+  g.textAlign = 'center';
+  const n = values.length, colW = (x1 - x0) / n;
+  const yOf = v => bot - Math.max(0, Math.min(1, v / scale)) * ch;
+  const last = currentIdx >= 0 ? currentIdx : n - 1;
+  if (isBars) {
+    const bw = Math.min(30, colW * 0.6);
+    values.forEach((v, i) => {
+      const cx = x0 + colW * (i + 0.5);
+      g.fillStyle = 'rgba(0,0,0,.1)'; roundRect(g, cx - bw / 2, top, bw, ch, bw / 2); g.fill();
+      const hgt = Math.max(0, Math.min(1, v / scale)) * ch;
+      if (hgt > 0) { g.fillStyle = ink; roundRect(g, cx - bw / 2, bot - hgt, bw, hgt, Math.min(bw / 2, hgt / 2)); g.fill(); }
+    });
+  } else {
+    const xs = i => x0 + (n > 1 ? (i / (n - 1)) * (x1 - x0) : (x1 - x0) / 2);
+    g.strokeStyle = ink; g.lineWidth = 5; g.lineJoin = 'round'; g.beginPath();
+    values.slice(0, last + 1).forEach((v, i) => (i ? g.lineTo(xs(i), yOf(v)) : g.moveTo(xs(i), yOf(v)))); g.stroke();
+    g.fillStyle = ink; values.slice(0, last + 1).forEach((v, i) => { g.beginPath(); g.arc(xs(i), yOf(v), 8, 0, Math.PI * 2); g.fill(); });
+  }
+  // dashed goal line(s)
+  g.setLineDash([16, 12]); g.strokeStyle = soft; g.lineWidth = 3;
+  if (Array.isArray(goal)) {
+    const xs = i => (isBars ? x0 + colW * (i + 0.5) : x0 + (n > 1 ? (i / (n - 1)) * (x1 - x0) : 0));
+    g.beginPath(); let started = false;
+    goal.forEach((v, i) => { if (v == null) return; started ? g.lineTo(xs(i), yOf(v)) : g.moveTo(xs(i), yOf(v)); started = true; }); g.stroke();
+  } else if (goal > 0) { g.beginPath(); g.moveTo(x0, yOf(goal)); g.lineTo(x1, yOf(goal)); g.stroke(); }
+  g.setLineDash([]);
+  // x labels
+  g.fillStyle = soft; g.font = `700 22px ${FONT}`;
+  labels.forEach((l, i) => { if (l) g.fillText(l, isBars ? x0 + colW * (i + 0.5) : x0 + (n > 1 ? (i / (n - 1)) * (x1 - x0) : 0), bot + 42); });
+  g.textAlign = 'left';
+}
+
+function drawCalendarImage(m) {
+  const type = m.type;
+  const cols = type === 'day' ? 7 : type === 'week' ? 1 : type === 'month' ? 4 : 5;
+  const cells = m.cells;
+  const rowsN = Math.ceil(cells.length / cols);
+  const cellW = (W - 2 * PAD - (cols - 1) * 16) / cols, cellH = type === 'day' ? 120 : type === 'week' ? 110 : 150;
+  const { c, g } = imageCanvas(270 + 70 + (type === 'day' ? 50 : 0) + rowsN * (cellH + 16) + 160);
+  let y = imageHeader(g, `${m.rangeText} · ${CAL_TYPES.find(([k]) => k === type)[1]}`, m.summary);
+  if (type === 'day') {
+    g.fillStyle = '#6b7280'; g.font = `700 26px ${FONT}`; g.textAlign = 'center';
+    for (let i = 0; i < 7; i++) g.fillText(DAY_SHORT[(state.settings.weekStart + i) % 7], PAD + i * (cellW + 16) + cellW / 2, y + 30);
+    y += 50;
+  }
+  g.textAlign = 'center';
+  cells.forEach((cell, i) => {
+    const cx = PAD + (i % cols) * (cellW + 16), cy = y + Math.floor(i / cols) * (cellH + 16);
+    const color = cell.out ? null : pctColor(cell.pct);
+    g.fillStyle = color || (cell.out ? '#ffffff' : '#eef0f2'); roundRect(g, cx, cy, cellW, cellH, 22); g.fill();
+    if (cell.current) { g.strokeStyle = '#1c2a4a'; g.lineWidth = 5; g.stroke(); }
+    const light = !color || color === '#facc15';
+    g.fillStyle = cell.out ? '#c4c8cf' : light ? '#1c2a4a' : '#ffffff';
+    g.font = `700 ${type === 'week' ? 32 : 34}px ${FONT}`;
+    g.fillText(cell.label, cx + cellW / 2, cy + (cell.pct != null && !cell.out ? cellH / 2 - 2 : cellH / 2 + 12));
+    if (cell.pct != null && !cell.out) { g.font = `800 26px ${FONT}`; g.fillText(`${Math.round(cell.pct)}%`, cx + cellW / 2, cy + cellH / 2 + 36); }
+  });
+  g.textAlign = 'left';
+  y += rowsN * (cellH + 16) + 50;
+  // legend
+  let lx = PAD; g.font = `700 26px ${FONT}`;
+  for (const [label, color] of [['0–33%', '#ef4444'], ['34–66%', '#f97316'], ['67–99%', '#facc15'], ['100%', '#22c55e']]) {
+    g.fillStyle = color; g.beginPath(); g.arc(lx + 14, y - 9, 14, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#1c2a4a'; g.fillText(label, lx + 38, y); lx += g.measureText(label).width + 90;
+  }
+  imageFooter(g, y + 80);
+  return c;
+}
 
 /* =========================================================
    Settings
@@ -2305,6 +2807,7 @@ function renderSettings() {
   renderTrash();
   $$('#set-weekstart button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.settings.weekStart));
   $$('#set-custommode button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.settings.customDateMode || 'add')));
+  $$('#set-calmode button').forEach(b => b.classList.toggle('on', b.dataset.v === (state.settings.calendarMode || 'complete')));
   const status = $('#notify-status');
   if (!('Notification' in window)) {
     status.textContent = 'System banners need Goalie added to your Home Screen (iOS 16.4+). In-app banners still work.';
@@ -2355,7 +2858,7 @@ let updateAsked = false; // asked already since the app was last opened
 // Something is open or being edited: don't interrupt it.
 function appBusy() {
   const a = document.activeElement;
-  return !!document.querySelector('.screen.modal.active, .sheet.show') || dragActive || editMode ||
+  return !!document.querySelector('.screen.modal.active, .sheet.show, #sheet[data-open]') || dragActive || editMode ||
     !!(a && /^(INPUT|TEXTAREA)$/.test(a.tagName));
 }
 function whenIdle(fn) {
@@ -2486,6 +2989,12 @@ $('#set-weekstart').addEventListener('click', e => {
 $('#set-custommode').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   state.settings.customDateMode = b.dataset.v;
+  save(); renderSettings();
+});
+
+$('#set-calmode').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.settings.calendarMode = b.dataset.v;
   save(); renderSettings();
 });
 
@@ -2774,14 +3283,31 @@ function todoTrashLink() {
   return el('button', { type: 'button', class: 'todo-trash-link', onclick: todoTrashSheet }, 'Recently deleted' + (n ? ' (' + n + ')' : ''));
 }
 
+// Sections open and close with their arrow (remembered); ⋯ renames or removes a section.
+const todoFolded = key => (state.settings.todoCollapsed || []).includes(key);
+function toggleTodoFold(key) {
+  const set = new Set(state.settings.todoCollapsed || []);
+  if (set.has(key)) set.delete(key); else set.add(key);
+  state.settings.todoCollapsed = [...set];
+  save(); renderTodos();
+}
+function foldHead(key, label, count, ...extra) {
+  const folded = todoFolded(key);
+  return el('div', { class: 'todo-section-head' },
+    el('button', { type: 'button', class: 'todo-section-name', 'aria-expanded': String(!folded), onclick: () => toggleTodoFold(key) },
+      label, el('span', { class: 'group-count' }, String(count)), el('span', { class: `todo-chev${folded ? ' folded' : ''}`, 'aria-hidden': 'true' }, '›')),
+    ...extra);
+}
+
 function todoSection(name, items) {
   const open = items.filter(t => !t.done).length;
+  const key = name || '__none__';
   return el('div', { class: 'todo-section' },
-    el('div', { class: 'todo-section-head' },
-      el('button', { type: 'button', class: 'todo-section-name', onclick: () => name && sectionMenu(name) },
-        name ? name.toUpperCase() : 'NO SECTION', el('span', { class: 'group-count' }, String(open))),
-      el('button', { type: 'button', class: 'todo-section-add', 'aria-label': `Add to ${name || 'no section'}`, onclick: () => todoSheet(null, name) }, '+ Add')),
-    items.length ? sortTodos(items).map(t => todoRow(t, false)) : el('p', { class: 'todo-empty' }, 'No to-dos here yet.'));
+    foldHead(key, name ? name.toUpperCase() : 'NO SECTION', open,
+      el('div', { class: 'todo-head-actions' },
+        name ? el('button', { type: 'button', class: 'todo-section-more', 'aria-label': `Rename or remove ${name}`, onclick: () => sectionMenu(name) }, '⋯') : null,
+        el('button', { type: 'button', class: 'todo-section-add', 'aria-label': `Add to ${name || 'no section'}`, onclick: () => todoSheet(null, name) }, '+ Add'))),
+    todoFolded(key) ? null : items.length ? sortTodos(items).map(t => todoRow(t, false)) : el('p', { class: 'todo-empty' }, 'No to-dos here yet.'));
 }
 
 // open items first (newest first), then finished ones
@@ -2826,11 +3352,10 @@ function renderPriorityView(box) {
   for (const n of [1, 2, 3, 4]) {
     const q = QUADRANTS[n];
     const items = withPriority.filter(t => t.quadrant === n);
+    const key = 'prio:' + q.key;
     box.append(el('div', { class: `todo-section prio p-${q.key}` },
-      el('div', { class: 'todo-section-head' },
-        el('div', { class: 'todo-section-name' }, q.priority.toUpperCase(), el('span', { class: 'group-count' }, String(items.filter(t => !t.done).length))),
-        el('span', { class: 'todo-prio-q' }, `${q.title} · ${q.desc}`)),
-      items.length ? sortTodos(items).map(t => todoRow(t, true)) : el('p', { class: 'todo-empty' }, 'Nothing here.')));
+      foldHead(key, q.priority.toUpperCase(), items.filter(t => !t.done).length, el('span', { class: 'todo-prio-q' }, `${q.title} · ${q.desc}`)),
+      todoFolded(key) ? null : items.length ? sortTodos(items).map(t => todoRow(t, true)) : el('p', { class: 'todo-empty' }, 'Nothing here.')));
   }
   box.append(todoTrashLink());
 }
@@ -2844,14 +3369,19 @@ function todoSheet(t, presetSection) {
     // grows with the text, so long to-dos are fully visible while typing
     const grow = () => { title.style.height = 'auto'; title.style.height = title.scrollHeight + 'px'; };
     title.addEventListener('input', () => { draft.title = title.value; grow(); });
+    autoList(title);
     requestAnimationFrame(grow);
     const sections = todoSectionNames();
     const newSec = el('input', { class: 'text-input', type: 'text', maxlength: 30, placeholder: 'Or type a new section name' });
+    // keep what's typed here when the sheet redraws (tapping a chip, YES/NO or a quadrant)
+    newSec.value = draft.newSection || '';
+    newSec.addEventListener('input', () => { draft.newSection = newSec.value; });
     const error = el('p', { class: 'form-error hidden' });
 
     const save_ = () => {
       draft.title = title.value.trim();
       if (newSec.value.trim()) draft.section = newSec.value.trim();
+      delete draft.newSection;
       if (!draft.title) { error.textContent = 'Give the to-do a name.'; error.classList.remove('hidden'); return; }
       if (draft.priority && !QUADRANTS[draft.quadrant]) { error.textContent = 'Pick a quadrant, or turn off the priority list.'; error.classList.remove('hidden'); return; }
       todoChange(() => {
@@ -2967,10 +3497,12 @@ function openSheet(...children) {
   sheet.style.transition = '';
   sheet.innerHTML = '';
   sheet.append(...children.flat().filter(Boolean));
+  sheet.dataset.open = '1';
   $('#sheet-backdrop').classList.add('show');
   requestAnimationFrame(() => sheet.classList.add('show'));
 }
 function closeSheet() {
+  delete $('#sheet').dataset.open;
   $('#sheet').classList.remove('show');
   $('#sheet-backdrop').classList.remove('show');
   if (document.activeElement) document.activeElement.blur();
@@ -3009,6 +3541,7 @@ $('#sheet-backdrop').addEventListener('click', closeSheet);
     if (dy > Math.min(120, sheet.offsetHeight * 0.25)) {
       sheet.style.transform = 'translateY(110%)';
       $('#sheet-backdrop').classList.remove('show');
+      delete sheet.dataset.open;
       setTimeout(() => { sheet.classList.remove('show'); sheet.style.transform = ''; }, 280);
     } else {
       sheet.style.transform = '';
@@ -3085,8 +3618,13 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { updateAsked = false; return; } // reopening asks again
   swReg?.update().catch(() => {});
   checkForUpdate(true);
-  askAboutEndedGoals();
-  backupReminder();
+  startupPopups();
 });
 setInterval(() => checkForUpdate(false), 60000); // a scheduled update time may arrive while open
-setTimeout(() => { askAboutEndedGoals(); backupReminder(); }, 1500);
+function startupPopups() {
+  whenIdle(() => {
+    streakPopup();
+    whenIdle(() => { askAboutEndedGoals(); backupReminder(); });
+  });
+}
+setTimeout(startupPopups, 1500);

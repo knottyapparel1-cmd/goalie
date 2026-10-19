@@ -65,6 +65,12 @@
         </button>
       </div>
     </header>
+    <div class="day-bar">
+      <button type="button" class="nav-arrow" id="day-prev" aria-label="Previous day">&lsaquo;</button>
+      <button type="button" class="day-label" id="day-label" aria-label="Pick a day"></button>
+      <button type="button" class="nav-arrow" id="day-next" aria-label="Next day">&rsaquo;</button>
+      <button type="button" class="day-today hidden" id="day-today">TODAY</button>
+    </div>
     <div id="group-chips" class="group-chips hidden" role="tablist" aria-label="Groups"></div>
     <main id="tally-list" class="tally-list"></main>
     <div class="filter-bar" id="goal-filter" role="tablist" aria-label="Show goals">
@@ -218,15 +224,15 @@
       <h2 id="range-label"></h2>
       <button class="nav-arrow" id="range-next" aria-label="Next">&rsaquo;</button>
     </div>
-    <div class="filter-bar" id="stats-filter" role="tablist" aria-label="Show goals">
-      <button type="button" role="tab" data-v="all">ALL</button>
-      <button type="button" role="tab" data-v="day">DAILY</button>
-      <button type="button" role="tab" data-v="week">WEEKLY</button>
-      <button type="button" role="tab" data-v="month">MONTHLY</button>
-      <button type="button" role="tab" data-v="year">YEARLY</button>
-      <button type="button" role="tab" data-v="date">DATE</button>
+    <div class="stats-show">
+      <button type="button" class="show-btn" id="stats-show" aria-expanded="false" aria-controls="stats-show-panel">
+        <span class="show-k">SHOW</span><span class="show-v" id="stats-show-value">All goals</span><span class="show-chev" aria-hidden="true">›</span>
+      </button>
+      <button type="button" class="icon-btn share-btn" id="stats-share" aria-label="Share what's shown">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
+      </button>
     </div>
-    <div id="stats-group-chips" class="group-chips stats-group-chips hidden" role="tablist" aria-label="Groups"></div>
+    <div id="stats-show-panel" class="show-panel hidden"></div>
     <div id="stats-list" class="stats-list"></div>
     <div class="seg tabs" id="range-tabs">
       <button type="button" data-v="day">DAY</button>
@@ -241,6 +247,10 @@
       </button>
       <button class="icon-btn view-btn" data-view="line" aria-label="Line chart">
         <svg viewBox="0 0 32 32" width="34" height="34" fill="none" stroke="#9aa0a8" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v24h24"/><path d="M8 22l6-8 5 4 8-10"/><circle cx="14" cy="14" r="1.6" fill="#9aa0a8"/><circle cx="19" cy="18" r="1.6" fill="#9aa0a8"/><circle cx="27" cy="8" r="1.6" fill="#9aa0a8"/></svg>
+        <span class="dot"></span>
+      </button>
+      <button class="icon-btn view-btn" data-view="calendar" aria-label="Calendar">
+        <svg viewBox="0 0 32 32" width="34" height="34" fill="none" stroke="#9aa0a8" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="6" width="24" height="22" rx="3"/><path d="M4 12h24M10 3v5M22 3v5"/><rect x="8" y="16" width="4" height="3" rx=".6" fill="#9aa0a8" stroke="none"/><rect x="14" y="16" width="4" height="3" rx=".6" fill="#9aa0a8" stroke="none"/><rect x="20" y="16" width="4" height="3" rx=".6" fill="#9aa0a8" stroke="none"/><rect x="8" y="22" width="4" height="3" rx=".6" fill="#9aa0a8" stroke="none"/><rect x="14" y="22" width="4" height="3" rx=".6" fill="#9aa0a8" stroke="none"/></svg>
         <span class="dot"></span>
       </button>
     </nav>
@@ -299,6 +309,13 @@
         <button type="button" data-v="add">ADD CUSTOM AMOUNT TO EXISTING NUMBER</button>
         <button type="button" data-v="replace">REPLACE EXISTING NUMBER WITH CUSTOM AMOUNT</button>
       </div>
+
+      <div class="field-label">CALENDAR COLORS:</div>
+      <div class="seg pills stack" id="set-calmode">
+        <button type="button" data-v="complete">GOALS FULLY COMPLETED</button>
+        <button type="button" data-v="average">AVERAGE PROGRESS TOWARD GOALS</button>
+      </div>
+      <p class="note">Fully completed: 3 of 4 goals met = 75%. Average progress: partly-done goals count too (2 of 3 workouts = 67%).</p>
 
       <div class="field-label">BACKUP</div>
       <button class="row-btn" id="btn-export">Export data (JSON)</button>
