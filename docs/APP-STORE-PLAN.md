@@ -1,0 +1,38 @@
+# Goalie → App Store / Google Play: plan and decisions
+
+Notes for whoever picks this up next (e.g. Claude Code on the Mac). Everything below was decided with the owner on 2026-10-19 – 2026-10-21.
+
+## Where things stand
+- Goalie is a working PWA (vanilla JS: `index.html`, `styles.css`, `app.js`, `sw.js`, `manifest.webmanifest`, `fonts/`, `icons/`), live at https://knottyapparel1-cmd.github.io/goalie/ (GitHub Pages, repo `knottyapparel1-cmd/goalie`, branch `main`).
+- Current web version: v85. The version lives in three places: `CACHE` in `sw.js`, `<meta name="goalie-version">` in `index.html`, and `version.json`.
+- The owner's real data lives in the home-screen web app on their iPhone. It moves to the native app with Settings → Export, then Import. Never commit backup files (`goalie-backup-*.json` is gitignored).
+
+## Working rules
+- **Never push to GitHub unless the owner says "push".** Commit locally, test, then wait.
+- The web app must never update itself silently. It asks: Update now, or schedule it. Keep it that way.
+- Test changes on a phone-sized screen before calling them done.
+
+## Decisions
+- **Wrapper: Capacitor** (not Ionic UI, not a rewrite). Keep the existing HTML/CSS/JS as the app.
+- **Target date: the App Store by 2026-11-01**, with everything included. Android (Google Play) follows from the same code; iPhone comes first.
+- **Sign-in: Google and Apple** (Apple is required when Google is offered). The purpose is **automatic backup and sync across devices**. Sharing with other people was not chosen.
+- **Backend: Firebase** (Auth plus Firestore), per-user data, with security rules so only the owner can read their data. Handle the first sign-in merge, local vs cloud, explicitly.
+- **App locks (iOS only)**, using Screen Time APIs (FamilyControls, ManagedSettings, DeviceActivity), as a custom Capacitor plugin in Swift:
+  - Apps are picked with Apple's FamilyActivityPicker (any app, or categories like Social).
+  - Each lock picks its own apps **and** its own goals. There can be several locks.
+  - A lock lifts when all of its goals are completed. "Completed" uses the same rule as the app: increase goals reach the target, decrease goals stay within the limit, ✓/✗ goals are checked.
+  - **Re-locking follows each goal's period** (daily goals re-lock each morning, weekly goals each new week, and so on). This needs a DeviceActivityMonitor extension so it happens even when Goalie is closed.
+  - **No emergency unlocks.** (The user can still revoke Screen Time permission in iOS Settings; Apple requires that.)
+  - Needs the **Family Controls (Distribution) entitlement** from Apple. If it isn't approved in time, ship without locks and add them in an update. Don't submit with the capability unapproved.
+- **Android:** no app locks at first (Android has no Screen Time equivalent; Play restricts AccessibilityService use). New personal Play accounts need a 14-day closed test with 12+ testers.
+
+## Owner's to-do (accounts)
+- Apple Developer Program (enrolling as an organization; the website for Apple's form will be a new domain, see below).
+- Request the Family Controls distribution entitlement for bundle ID `com.knottyapparel.goalie` (suggested).
+- Create the app in App Store Connect.
+- Firebase project: Google and Apple sign-in, Firestore, iOS app, `GoogleService-Info.plist`.
+- Domain (e.g. from GoDaddy) for a **separate** website: home, About, Privacy Policy, Support.
+  - Do **not** point the domain at the app's GitHub Pages site: changing the app's address would empty every installed home-screen copy, because web storage belongs to the address.
+
+## App Store listing needs
+Privacy policy URL, support URL, screenshots (6.7" and 6.5"), description, keywords, age rating, and a 1024×1024 icon. The logo is navy: three rounded bars (short, tall, medium), a line, then GOALIE. Source images are in `icons/`; regenerate at 1024.
