@@ -786,7 +786,8 @@ function tallyCard(t, bump) {
   // Hold to lift and drag anywhere (in edit mode a plain press drags); held still = the menu.
   let fromGroup = '';
   dragSort(card, {
-    holdMs: editMode ? 0 : 500,
+    holdMs: editMode ? 0 : 100, // ready to drag after 0.1s
+    menuMs: 500, // held still 0.5s: the menu
     scroller: $('#tally-list'),
     itemSelector: '#tally-list .card',
     containerSelector: '#tally-list .grid',
@@ -848,19 +849,23 @@ const OWN_CONTROLS = '.step-btn, .card-delete, .todo-check, .todo-section-add, .
 let holdReleasedAt = 0; // when a finger last let go of a hold that opened a menu
 let dragActive = false; // something is being dragged; hold off re-rendering until it's dropped
 function dragSort(node, opts) {
-  const { holdMs = 450, scroller, itemSelector, containerSelector, onTap, onHold, onLift, onDrop } = opts;
+  const { holdMs = 450, menuMs = holdMs, scroller, itemSelector, containerSelector, onTap, onHold, onLift, onDrop } = opts;
   const handle = opts.handle || node;
   let sx = 0, sy = 0, x = 0, y = 0, timer = null, pressed = false, lifted = false, moved = false, ghost = null, gx = 0, gy = 0, raf = null;
   let suppressClickUntil = 0;
 
   // Held still for holdMs: the item lifts and (cards) the menu opens right away. It stays open when
   // the finger lifts; moving the finger instead closes it and drags the item.
-  let menuOpen = false;
+  // menuMs: how long a still hold takes to open the menu (cards: it can drag sooner, at holdMs).
+  let menuOpen = false, menuTimer = null;
   const lift = () => {
     timer = null; lifted = true; dragActive = true;
     node.classList.add('lifted');
     onLift?.();
-    if (onHold && holdMs > 0) { menuOpen = true; onHold(); }
+    if (onHold && holdMs > 0) menuTimer = setTimeout(() => {
+      menuTimer = null;
+      if (pressed && !ghost) { menuOpen = true; onHold(); }
+    }, Math.max(0, menuMs - holdMs));
   };
   const startGhost = () => {
     const r = node.getBoundingClientRect();
@@ -901,6 +906,7 @@ function dragSort(node, opts) {
   };
   const finish = () => {
     clearTimeout(timer); timer = null;
+    clearTimeout(menuTimer); menuTimer = null;
     const hadMenu = menuOpen;
     menuOpen = false;
     cancelAnimationFrame(raf);
@@ -934,6 +940,7 @@ function dragSort(node, opts) {
       } else return false;
     }
     if (!ghost && far > 12) {
+      clearTimeout(menuTimer); menuTimer = null;
       if (menuOpen) { menuOpen = false; closeSheet(); } // moving after the menu opened: drag instead
       startGhost();
     }
