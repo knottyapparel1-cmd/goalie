@@ -2619,7 +2619,9 @@ const calState = { type: 'day', offset: 0 };
 let statsModel = null; // what's on screen, for Share
 const CAL_TYPES = [['day', 'DAILY'], ['week', 'WEEKLY'], ['month', 'MONTHLY'], ['year', 'YEARLY']];
 const PCT_COLORS = [[33, '#ef4444'], [66, '#f97316'], [99, '#facc15'], [100, '#22c55e']];
-const pctColor = p => (p == null ? null : PCT_COLORS.find(([max]) => Math.round(p) <= max)[1]);
+// Over 100% (only possible with Average progress): a white box with gold lettering.
+const OVER = 'over', GOLD = '#b8860b';
+const pctColor = p => (p == null ? null : Math.round(p) > 100 ? OVER : PCT_COLORS.find(([max]) => Math.round(p) <= max)[1]);
 
 function calendarRange() {
   const now = new Date(), o = calState.offset;
@@ -2646,7 +2648,7 @@ function periodScore(t, from, to) {
   let progress;
   if (isCheck(t)) progress = down ? (total === 0 ? 1 : 0) : (total >= 1 ? 1 : 0);
   else if (down) progress = total <= t.target ? 1 : t.target / total;
-  else progress = Math.min(1, total / t.target);
+  else progress = total / t.target; // Average progress counts going over (150% of the goal = 1.5)
   if ((state.settings.calendarMode || 'complete') === 'complete') return progress >= 1 ? 1 : 0;
   return progress;
 }
@@ -2718,15 +2720,16 @@ function renderCalendar(list, shown) {
       el('button', { type: 'button', class: k === type ? 'on' : '', onclick: () => { calState.type = k; calState.offset = 0; state.settings.calGoals = null; save(); renderStats(); } }, label))),
     el('p', { class: 'cal-summary' }, summary),
     box,
-    el('div', { class: 'cal-legend' }, [['0–33%', '#ef4444'], ['34–66%', '#f97316'], ['67–99%', '#facc15'], ['100%', '#22c55e']]
-      .map(([t, c]) => el('span', {}, el('i', { style: `background:${c}` }), t))));
+    el('div', { class: 'cal-legend' }, [['0–33%', '#ef4444'], ['34–66%', '#f97316'], ['67–99%', '#facc15'], ['100%', '#22c55e'],
+      ...((state.settings.calendarMode || 'complete') === 'average' ? [['Over 100%', OVER]] : [])]
+      .map(([t, c]) => el('span', {}, el('i', { class: c === OVER ? 'over' : '', style: c === OVER ? '' : `background:${c}` }), t))));
 }
 function calCell(cell, onPick, cls = 'cal-cell') {
   const color = pctColor(cell.pct);
   return el('button', {
     type: 'button',
-    class: `${cls}${cell.out ? ' out' : ''}${cell.current ? ' current' : ''}${color ? ' scored' : ''}${color === '#facc15' ? ' light' : ''}`,
-    style: color ? `background:${color}` : '',
+    class: `${cls}${cell.out ? ' out' : ''}${cell.current ? ' current' : ''}${color === OVER ? ' over' : color ? ' scored' : ''}${color === '#facc15' ? ' light' : ''}`,
+    style: color && color !== OVER ? `background:${color}` : '',
     disabled: !onPick,
     onclick: onPick || null,
   }, el('span', { class: 'cal-l' }, cell.label), cell.pct != null && !cell.out ? el('span', { class: 'cal-p' }, `${Math.round(cell.pct)}%`) : null);
@@ -2741,7 +2744,7 @@ function calendarDaySheet(goals, cell) {
     el('h3', {}, title),
     el('p', {}, cell.pct == null ? 'Nothing was measured then.' : `${Math.round(cell.pct)}% · ${rows.filter(r => r.score >= 1).length} of ${rows.length} completed`),
     el('div', { class: 'hist' }, rows.map(({ t, score, total }) => el('div', { class: 'hist-row' },
-      el('span', { class: 'cal-dot', style: `background:${score >= 1 ? '#22c55e' : pctColor(score * 100)}` }),
+      el('span', { class: `cal-dot${score * 100 > 100.5 ? ' over' : ''}`, style: score * 100 > 100.5 ? '' : `background:${score >= 1 ? '#22c55e' : pctColor(score * 100)}` }),
       el('span', { class: 'hist-when' }, el('strong', {}, t.name)),
       el('span', { class: 'hist-amount' }, isCheck(t) ? (score >= 1 ? '✓' : '✗') : `${num(t, total)}/${num(t, t.target)}`)))),
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Done'),
@@ -2866,10 +2869,11 @@ function drawCalendarImage(m) {
   cells.forEach((cell, i) => {
     const cx = PAD + (i % cols) * (cellW + 16), cy = y + Math.floor(i / cols) * (cellH + 16);
     const color = cell.out ? null : pctColor(cell.pct);
-    g.fillStyle = color || (cell.out ? '#ffffff' : '#eef0f2'); roundRect(g, cx, cy, cellW, cellH, 22); g.fill();
+    g.fillStyle = color === OVER ? '#ffffff' : color || (cell.out ? '#ffffff' : '#eef0f2'); roundRect(g, cx, cy, cellW, cellH, 22); g.fill();
+    if (color === OVER) { g.strokeStyle = GOLD; g.lineWidth = 4; g.stroke(); }
     if (cell.current) { g.strokeStyle = '#1c2a4a'; g.lineWidth = 5; g.stroke(); }
     const light = !color || color === '#facc15';
-    g.fillStyle = cell.out ? '#c4c8cf' : light ? '#1c2a4a' : '#ffffff';
+    g.fillStyle = cell.out ? '#c4c8cf' : color === OVER ? GOLD : light ? '#1c2a4a' : '#ffffff';
     g.font = `700 ${type === 'week' ? 32 : 34}px ${FONT}`;
     g.fillText(cell.label, cx + cellW / 2, cy + (cell.pct != null && !cell.out ? cellH / 2 - 2 : cellH / 2 + 12));
     if (cell.pct != null && !cell.out) { g.font = `800 26px ${FONT}`; g.fillText(`${Math.round(cell.pct)}%`, cx + cellW / 2, cy + cellH / 2 + 36); }
@@ -2878,8 +2882,9 @@ function drawCalendarImage(m) {
   y += rowsN * (cellH + 16) + 50;
   // legend
   let lx = PAD; g.font = `700 26px ${FONT}`;
-  for (const [label, color] of [['0–33%', '#ef4444'], ['34–66%', '#f97316'], ['67–99%', '#facc15'], ['100%', '#22c55e']]) {
-    g.fillStyle = color; g.beginPath(); g.arc(lx + 14, y - 9, 14, 0, Math.PI * 2); g.fill();
+  for (const [label, color] of [['0–33%', '#ef4444'], ['34–66%', '#f97316'], ['67–99%', '#facc15'], ['100%', '#22c55e'], ...((state.settings.calendarMode || 'complete') === 'average' ? [['Over 100%', OVER]] : [])]) {
+    g.fillStyle = color === OVER ? '#ffffff' : color; g.beginPath(); g.arc(lx + 14, y - 9, 14, 0, Math.PI * 2); g.fill();
+    if (color === OVER) { g.strokeStyle = GOLD; g.lineWidth = 3; g.stroke(); }
     g.fillStyle = '#1c2a4a'; g.fillText(label, lx + 38, y); lx += g.measureText(label).width + 90;
   }
   imageFooter(g, y + 80);

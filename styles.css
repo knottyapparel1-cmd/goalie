@@ -1652,3 +1652,8 @@ html { touch-action: manipulation; }
 .group-chip.goal-chip.on { box-shadow: 0 0 0 2.5px var(--bg), 0 0 0 4.5px var(--fill); }
 .group-chip.goal-chip.on::before { content: '✓'; font-weight: 800; margin-right: 2px; }
 .show-empty { margin: 10px 2px 0; }
+
+/* ---------- Calendar: over 100% = white box, gold lettering ---------- */
+.cal-cell.over, .cal-bar.over { background: #ffffff; color: #b8860b; box-shadow: inset 0 0 0 2px #d4a72c; }
+.cal-cell.over.current, .cal-bar.over.current { box-shadow: inset 0 0 0 2px #d4a72c, inset 0 0 0 4px var(--navy); }
+.cal-legend i.over, .cal-dot.over { background: #ffffff; box-shadow: inset 0 0 0 2px #d4a72c; }
