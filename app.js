@@ -2185,6 +2185,7 @@ function drawStats() {
         caption = 'TOTAL EACH MONTH';
       }
     }
+    if (!isBars && statsState.range === 'year') goal = 0; // Year line charts: no dashed goal line
     const scale = chartScale(t, values, goal);
     statsModel.cards.push({ t, values, labels: bucketLabels(r), currentIdx, scale, goal, caption, sub: card.querySelector('.stat-sub').textContent, isBars });
     card.append(isBars
