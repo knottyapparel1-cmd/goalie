@@ -786,7 +786,7 @@ function tallyCard(t, bump) {
   // Hold to lift and drag anywhere (in edit mode a plain press drags); held still = the menu.
   let fromGroup = '';
   dragSort(card, {
-    holdMs: editMode ? 0 : 450,
+    holdMs: editMode ? 0 : 500,
     scroller: $('#tally-list'),
     itemSelector: '#tally-list .card',
     containerSelector: '#tally-list .grid',
@@ -845,6 +845,7 @@ function restoreTally(trashId) {
    places it can be dropped into), onTap, onHold (held without moving), onLift, onDrop, handle. */
 // Buttons inside a draggable item that keep working on their own (they never start a drag).
 const OWN_CONTROLS = '.step-btn, .card-delete, .todo-check, .todo-section-add, .todo-section-more, .todo-section-delete, input, textarea';
+let holdReleasedAt = 0; // when a finger last let go of a hold that opened a menu
 let dragActive = false; // something is being dragged; hold off re-rendering until it's dropped
 function dragSort(node, opts) {
   const { holdMs = 450, scroller, itemSelector, containerSelector, onTap, onHold, onLift, onDrop } = opts;
@@ -852,17 +853,14 @@ function dragSort(node, opts) {
   let sx = 0, sy = 0, x = 0, y = 0, timer = null, pressed = false, lifted = false, moved = false, ghost = null, gx = 0, gy = 0, raf = null;
   let suppressClickUntil = 0;
 
-  let menuTimer = null, held = false;
+  // Held still for holdMs: the item lifts and (cards) the menu opens right away. It stays open when
+  // the finger lifts; moving the finger instead closes it and drags the item.
+  let menuOpen = false;
   const lift = () => {
     timer = null; lifted = true; dragActive = true;
     node.classList.add('lifted');
     onLift?.();
-    // Still not moving a moment later: open the menu now, without waiting for the finger to lift.
-    if (onHold && holdMs > 0) menuTimer = setTimeout(() => {
-      if (ghost || !pressed) return;
-      held = true;
-      finish();
-    }, 300);
+    if (onHold && holdMs > 0) { menuOpen = true; onHold(); }
   };
   const startGhost = () => {
     const r = node.getBoundingClientRect();
@@ -903,7 +901,8 @@ function dragSort(node, opts) {
   };
   const finish = () => {
     clearTimeout(timer); timer = null;
-    clearTimeout(menuTimer); menuTimer = null;
+    const hadMenu = menuOpen;
+    menuOpen = false;
     cancelAnimationFrame(raf);
     const wasLifted = lifted, wasDragged = !!ghost;
     ghost?.remove(); ghost = null;
@@ -912,13 +911,14 @@ function dragSort(node, opts) {
     dragActive = false;
     if (wasLifted) suppressClickUntil = Date.now() + 600;
     if (wasDragged) onDrop?.();
-    else if (wasLifted) onHold?.();
+    else if (wasLifted && !hadMenu) onHold?.();
+    if (hadMenu && !wasDragged) holdReleasedAt = Date.now(); // this release mustn't close the menu it opened
     else if (!moved && onTap) { suppressClickUntil = Date.now() + 600; onTap(); } // (no onTap: the tap goes to the buttons inside)
   };
 
   const down = (px, py, target) => {
     if (target.closest(OWN_CONTROLS)) return false;
-    pressed = true; moved = false; lifted = false; held = false;
+    pressed = true; moved = false; lifted = false; menuOpen = false;
     sx = x = px; sy = y = py;
     if (holdMs > 0) timer = setTimeout(lift, holdMs);
     return true;
@@ -933,19 +933,20 @@ function dragSort(node, opts) {
         lift();
       } else return false;
     }
-    if (!ghost && far > 12) { clearTimeout(menuTimer); menuTimer = null; startGhost(); }
+    if (!ghost && far > 12) {
+      if (menuOpen) { menuOpen = false; closeSheet(); } // moving after the menu opened: drag instead
+      startGhost();
+    }
     return true;
   };
 
   // touch
   handle.addEventListener('touchstart', e => { if (e.touches.length === 1) down(e.touches[0].clientX, e.touches[0].clientY, e.target); }, { passive: true });
   handle.addEventListener('touchmove', e => {
-    if (held) { e.preventDefault(); return; }
     if (!pressed) return;
     if (drag(e.touches[0].clientX, e.touches[0].clientY) || lifted) e.preventDefault();
   }, { passive: false });
   handle.addEventListener('touchend', e => {
-    if (held) { e.preventDefault(); held = false; suppressClickUntil = Date.now() + 600; return; }
     if (pressed) { if (lifted || (!moved && onTap)) e.preventDefault(); finish(); }
   });
   handle.addEventListener('touchcancel', () => { if (pressed) finish(); });
@@ -3773,7 +3774,7 @@ function closeSheet() {
   $('#sheet-backdrop').classList.remove('show');
   if (document.activeElement) document.activeElement.blur();
 }
-$('#sheet-backdrop').addEventListener('click', closeSheet);
+$('#sheet-backdrop').addEventListener('click', () => { if (Date.now() - holdReleasedAt > 500) closeSheet(); });
 
 // Swipe a sheet down to dismiss it (only when its content is scrolled to the top).
 (() => {
