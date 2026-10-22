@@ -847,6 +847,13 @@ function restoreTally(trashId) {
 // Buttons inside a draggable item that keep working on their own (they never start a drag).
 const OWN_CONTROLS = '.step-btn, .card-delete, .todo-check, .todo-section-add, .todo-section-more, .todo-section-delete, input, textarea';
 let holdReleasedAt = 0; // when a finger last let go of a hold that opened a menu
+// After a drag (or a hold) ends, the phone still sends a 'tap' where the finger lifted. The cards may
+// have just redrawn, so that tap could land on a different card or its + and log something: ignore
+// every tap for a moment.
+let blockTapsUntil = 0;
+window.addEventListener('click', e => {
+  if (Date.now() < blockTapsUntil) { e.preventDefault(); e.stopPropagation(); }
+}, true);
 let dragActive = false; // something is being dragged; hold off re-rendering until it's dropped
 function dragSort(node, opts) {
   const { holdMs = 450, menuMs = holdMs, scroller, itemSelector, containerSelector, onTap, onHold, onLift, onDrop } = opts;
@@ -915,10 +922,11 @@ function dragSort(node, opts) {
     node.classList.remove('lifted', 'drag-placeholder');
     pressed = lifted = false;
     dragActive = false;
-    if (wasLifted) suppressClickUntil = Date.now() + 600;
-    if (wasDragged) onDrop?.();
-    else if (wasLifted && !hadMenu) onHold?.();
+    if (wasLifted) { suppressClickUntil = Date.now() + 600; blockTapsUntil = Date.now() + 450; }
     if (hadMenu && !wasDragged) holdReleasedAt = Date.now(); // this release mustn't close the menu it opened
+    if (wasDragged) onDrop?.();
+    else if (hadMenu) { /* the menu is already open */ }
+    else if (wasLifted) onHold?.(); // (cards open their menu while held; to-dos and sections have none)
     else if (!moved && onTap) { suppressClickUntil = Date.now() + 600; onTap(); } // (no onTap: the tap goes to the buttons inside)
   };
 
