@@ -770,7 +770,7 @@ function tallyCard(t, bump) {
       : `${t.name}: ${countText}. Tap to log, hold for options.`,
   },
   el('div', { class: 'card-top' },
-    el('div', { class: 'card-name' + nameSizeClass(t.name) }, goalTitle(t, goalReached(t, count))),
+    el('div', { class: 'card-name' + nameSizeClass(t.name) }, goalTitle(t)), // the ↑ / ↓ always shows the goal's direction (the big ✓ marks completion)
     el('div', { class: 'card-period' }, goalEnded(t) ? `ENDED ${goalReached(t, count) ? '✓' : '✗'}`
       : byDate(t) ? `BY ${longDate(t.dueDate).toUpperCase()}` : periodLabel(t),
       t.dueDate && !byDate(t) ? el('span', { class: 'card-due' }, `· BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}`) : null,
