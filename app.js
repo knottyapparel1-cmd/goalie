@@ -88,7 +88,7 @@ const TRASH_DAYS = 30;
 
 /* Storage: every save goes to localStorage (small, ~5 MB, read instantly at start) and to IndexedDB
    (much larger). At start the newer of the two wins, so data keeps saving after localStorage fills. */
-const storage = { synced: false, idbWorks: false, damagedKey: null };
+const storage = { synced: false, idbWorks: false, damagedKey: null, saves: 0 };
 let idbPromise = null;
 function idb() {
   if (!idbPromise) {
@@ -185,6 +185,7 @@ function load() {
 }
 
 function save() {
+  storage.saves++;
   // Only stamp the time once the IndexedDB copy has been checked; saves before that (start-up
   // tidying) must not make a blank or older state look newer than the copy there.
   if (storage.synced) state.savedAt = Date.now();
@@ -253,7 +254,17 @@ function fmt(n) {
 /* =========================================================
    Tally queries
    ========================================================= */
-function entriesFor(id) { return state.entries.filter(e => e.tallyId === id); }
+// Entries grouped by goal, rebuilt only when the data changes (every change goes through save()).
+let entryIndex = null;
+function entriesFor(id) {
+  const all = state.entries;
+  if (!entryIndex || entryIndex.src !== all || entryIndex.len !== all.length || entryIndex.at !== storage.saves) {
+    const map = new Map();
+    for (const e of all) { let list = map.get(e.tallyId); if (!list) map.set(e.tallyId, list = []); list.push(e); }
+    entryIndex = { src: all, len: all.length, at: storage.saves, map };
+  }
+  return (entryIndex.map.get(id) || []).slice();
+}
 
 // Whether a log at this time counts toward the goal: it must be on one of the goal's measured
 // weekdays, and (by-date goals) between the start of the current run and the end of the date.
@@ -574,7 +585,8 @@ function drawToday(bumpId) {
         },
         el('span', { class: 'group-name' }, name ? name.toUpperCase() : 'NO GROUP'),
         el('span', { class: 'group-count' }, String(tallies.length)),
-        el('span', { class: 'group-chev', 'aria-hidden': 'true' }, '›'))));
+        el('span', { class: 'group-chev', 'aria-hidden': 'true' }, '›')),
+        name && !editMode ? visionButton(name) : null));
     }
     const grid = el('div', { class: `grid${isCollapsed ? ' collapsed' : ''}`, 'data-group': name });
     tallies.forEach(t => grid.append(tallyCard(t, t.id === bumpId)));
@@ -583,6 +595,36 @@ function drawToday(bumpId) {
 }
 
 const NO_GROUP = '__none__';
+
+/* ---------- Group vision: why the goals in a group matter ---------- */
+const visionOf = g => ((state.settings.groupVisions || {})[g] || '').trim();
+const VISION_PROMPT = 'Questions to think about:\n• What will these goals help you accomplish in the long run?\n• Why did you set them?\n• Who do they help you become?';
+function eyeIcon() {
+  const span = el('span', { class: 'eye', 'aria-hidden': 'true' });
+  span.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  return span;
+}
+function visionButton(group) {
+  return el('button', { type: 'button', class: `vision-btn${visionOf(group) ? ' has' : ''}`, 'aria-label': `${group} vision`, onclick: () => visionSheet(group) }, eyeIcon());
+}
+function visionSheet(group) {
+  const area = el('textarea', { class: 'text-area vision-input', rows: 6, placeholder: VISION_PROMPT });
+  area.value = visionOf(group);
+  autoList(area);
+  const saveVision = () => {
+    const v = (state.settings.groupVisions ||= {});
+    if (area.value.trim()) v[group] = area.value.trim(); else delete v[group];
+    save(); renderToday(); closeSheet();
+    toast(area.value.trim() ? 'Vision saved' : 'Vision cleared');
+  };
+  openSheet(
+    el('div', { class: 'vision-head' }, eyeIcon(), el('h3', {}, `${group} vision`)),
+    el('p', {}, 'Why do the goals in this group matter to you? Come back here whenever you need the reminder.'),
+    area,
+    el('button', { class: 'sheet-btn primary', onclick: saveVision }, 'Save vision'),
+    el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'),
+  );
+}
 
 // Every group name, in the user's chosen order (new groups go at the end in order of first appearance).
 function allGroupNames() {
@@ -730,7 +772,7 @@ function tallyCard(t, bump) {
   el('div', { class: 'card-top' },
     el('div', { class: 'card-name' + nameSizeClass(t.name) }, goalTitle(t, goalReached(t, count))),
     el('div', { class: 'card-period' }, goalEnded(t) ? `ENDED ${goalReached(t, count) ? '✓' : '✗'}`
-      : byDate(t) ? `BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}` : periodLabel(t),
+      : byDate(t) ? `BY ${longDate(t.dueDate).toUpperCase()}` : periodLabel(t),
       t.dueDate && !byDate(t) ? el('span', { class: 'card-due' }, `· BY ${longDate(t.dueDate).replace(/, \d{4}$/, '').toUpperCase()}`) : null,
       goalBadge(t, count))),
   completed
@@ -810,10 +852,17 @@ function dragSort(node, opts) {
   let sx = 0, sy = 0, x = 0, y = 0, timer = null, pressed = false, lifted = false, moved = false, ghost = null, gx = 0, gy = 0, raf = null;
   let suppressClickUntil = 0;
 
+  let menuTimer = null, held = false;
   const lift = () => {
     timer = null; lifted = true; dragActive = true;
     node.classList.add('lifted');
     onLift?.();
+    // Still not moving a moment later: open the menu now, without waiting for the finger to lift.
+    if (onHold && holdMs > 0) menuTimer = setTimeout(() => {
+      if (ghost || !pressed) return;
+      held = true;
+      finish();
+    }, 300);
   };
   const startGhost = () => {
     const r = node.getBoundingClientRect();
@@ -854,6 +903,7 @@ function dragSort(node, opts) {
   };
   const finish = () => {
     clearTimeout(timer); timer = null;
+    clearTimeout(menuTimer); menuTimer = null;
     cancelAnimationFrame(raf);
     const wasLifted = lifted, wasDragged = !!ghost;
     ghost?.remove(); ghost = null;
@@ -868,7 +918,7 @@ function dragSort(node, opts) {
 
   const down = (px, py, target) => {
     if (target.closest(OWN_CONTROLS)) return false;
-    pressed = true; moved = false; lifted = false;
+    pressed = true; moved = false; lifted = false; held = false;
     sx = x = px; sy = y = py;
     if (holdMs > 0) timer = setTimeout(lift, holdMs);
     return true;
@@ -877,23 +927,27 @@ function dragSort(node, opts) {
     x = px; y = py;
     const far = Math.hypot(px - sx, py - sy);
     if (!lifted) {
-      if (far > 10) {
+      if (far > 14) {
         moved = true;
         if (holdMs > 0) { clearTimeout(timer); timer = null; pressed = false; return false; } // it's a scroll
         lift();
       } else return false;
     }
-    if (!ghost && far > 4) startGhost();
+    if (!ghost && far > 12) { clearTimeout(menuTimer); menuTimer = null; startGhost(); }
     return true;
   };
 
   // touch
   handle.addEventListener('touchstart', e => { if (e.touches.length === 1) down(e.touches[0].clientX, e.touches[0].clientY, e.target); }, { passive: true });
   handle.addEventListener('touchmove', e => {
+    if (held) { e.preventDefault(); return; }
     if (!pressed) return;
     if (drag(e.touches[0].clientX, e.touches[0].clientY) || lifted) e.preventDefault();
   }, { passive: false });
-  handle.addEventListener('touchend', e => { if (pressed) { if (lifted || (!moved && onTap)) e.preventDefault(); finish(); } });
+  handle.addEventListener('touchend', e => {
+    if (held) { e.preventDefault(); held = false; suppressClickUntil = Date.now() + 600; return; }
+    if (pressed) { if (lifted || (!moved && onTap)) e.preventDefault(); finish(); }
+  });
   handle.addEventListener('touchcancel', () => { if (pressed) finish(); });
   // mouse (computers)
   handle.addEventListener('mousedown', e => {
@@ -2065,8 +2119,8 @@ function drawStats() {
     list.append(el('div', { class: 'empty' }, el('strong', {}, 'No data yet'), 'Set a goal to see your stats.'));
     return;
   }
+  if (calendar) { renderCalendar(list, state.tallies.filter(calendarShows)); return; }
   const shown = state.tallies.filter(statsShows);
-  if (calendar) { renderCalendar(list, shown); return; }
   statsModel.rangeText = rangeLabel(r);
   if (!shown.length) {
     list.append(el('div', { class: 'empty' }, el('strong', {}, 'No goals here'), 'Turn on more goal types or groups in SHOW at the top.'));
@@ -2433,17 +2487,20 @@ function streakPopup() {
   const y0 = addDays(startOfDay(new Date()), -1).getTime(), y1 = startOfDay(new Date()).getTime();
   const daily = state.tallies.filter(t => t.reset === 'day' && !byDate(t) && (t.target > 0 || isCheck(t)) && goalStartDay(t) <= y0 && measuredWeekdays(t).includes(new Date(y0).getDay()));
   const doneYesterday = daily.filter(t => { const n = countedEntries(t).reduce((s, e) => (e.ts >= y0 && e.ts < y1 ? s + e.value : s), 0); return isCheck(t) ? (t.direction === 'decrease' ? n === 0 : n >= 1) : (t.direction === 'decrease' ? n <= t.target : n >= t.target); });
-  if (!streaks.length && !doneYesterday.length) return; // nothing to celebrate yet
+  const visionGroups = allGroupNames().filter(visionOf);
+  const vg = visionGroups.length ? visionGroups[Math.floor(Date.now() / DAY_MS) % visionGroups.length] : null;
+  if (!streaks.length && !doneYesterday.length && !vg) return; // nothing to show yet
   const name = (state.settings.name || '').trim();
   const lines = streaks.map(({ t, n }) => ({ name: t.name, color: t.color, text: streakLine(t, n), n }));
   const yesterday = daily.length ? `Yesterday you completed ${doneYesterday.length} of ${daily.length} daily goal${daily.length === 1 ? '' : 's'}.` : '';
   openSheet(
     el('h3', {}, name ? `Nice work, ${name}!` : 'Nice work!'),
-    el('p', {}, streaks.length ? 'Here’s what you’re doing well at:' : yesterday),
+    streaks.length || yesterday ? el('p', {}, streaks.length ? 'Here’s what you’re doing well at:' : yesterday) : null,
     streaks.length ? el('div', { class: 'streaks' }, lines.map(l => el('div', { class: 'streak-row' },
       el('span', { class: 'streak-n', style: `background:${l.color};color:${inkClass(l.color) === 'on-light' ? '#1c2a4a' : '#fff'}` }, String(l.n)),
       el('span', { class: 'streak-text' }, el('strong', {}, l.name), el('span', {}, l.text))))) : null,
     streaks.length && yesterday ? el('p', {}, yesterday) : null,
+    vg ? el('div', { class: 'vision-card' }, el('div', { class: 'vision-card-head' }, eyeIcon(), `YOUR ${vg.toUpperCase()} VISION`), el('p', {}, visionOf(vg))) : null,
     el('button', { class: 'sheet-btn primary', onclick: closeSheet }, 'Let’s go'),
     el('button', { class: 'sheet-btn', onclick: () => shareImage(drawStreakImage(lines, yesterday, name), 'goalie-streaks') }, 'Share'),
   );
@@ -2468,16 +2525,30 @@ function drawStreakImage(lines, yesterday, name) {
 const STAT_TYPES = [['day', 'Daily'], ['week', 'Weekly'], ['month', 'Monthly'], ['year', 'Yearly'], ['date', 'Custom date'], ['hour', 'Hourly'], ['minute', 'Per minute']];
 const statType = t => (byDate(t) ? 'date' : t.reset);
 // settings.statsTypes / statsGroups: null = everything on, otherwise the list that's on
-function statsShows(t) {
-  const types = state.settings.statsTypes, groups = state.settings.statsGroups;
-  if (types && !types.includes(statType(t))) return false;
+function statsGroupOk(t) {
+  const groups = state.settings.statsGroups;
   if (!groups) return true;
   const gs = groupsOf(t);
   return gs.length ? gs.some(g => groups.includes(g)) : groups.includes(NO_GROUP);
 }
+function statsShows(t) {
+  const types = state.settings.statsTypes;
+  if (types && !types.includes(statType(t))) return false;
+  return statsGroupOk(t);
+}
+// Calendar: no goal-type filter (the calendar has its own DAILY/WEEKLY… buttons); groups, then picked goals.
+const calendarGoalChoices = () => state.tallies.filter(t => !byDate(t) && t.reset === calState.type && (t.target > 0 || isCheck(t)) && statsGroupOk(t));
+function calendarShows(t) {
+  const picked = state.settings.calGoals;
+  return statsGroupOk(t) && (!picked || picked.includes(t.id));
+}
 function showSummary() {
-  const types = state.settings.statsTypes, groups = state.settings.statsGroups;
+  const types = statsState.view === 'calendar' ? null : state.settings.statsTypes, groups = state.settings.statsGroups;
   const parts = [];
+  if (statsState.view === 'calendar' && state.settings.calGoals) {
+    const names = state.tallies.filter(t => state.settings.calGoals.includes(t.id)).map(t => t.name);
+    parts.push(names.length ? names.join(', ') : 'No goals');
+  }
   if (types) parts.push(types.length ? STAT_TYPES.filter(([k]) => types.includes(k)).map(([, n]) => n).join(', ') : 'No types');
   if (groups) parts.push(groups.length ? groups.map(g => (g === NO_GROUP ? 'No group' : g)).join(', ') : 'No groups');
   return parts.length ? parts.join(' · ') : 'All goals';
@@ -2495,7 +2566,13 @@ function renderShowPanel() {
   panel.innerHTML = '';
   const typesHere = STAT_TYPES.filter(([k]) => ['day', 'week', 'month', 'year', 'date'].includes(k) || state.tallies.some(t => statType(t) === k));
   const groupsHere = [...allGroupNames(), ...(state.tallies.some(t => !groupsOf(t).length) ? [NO_GROUP] : [])].map(g => [g, g === NO_GROUP ? 'No group' : g]);
-  const lists = { types: ['GOAL TYPES', 'statsTypes', typesHere], groups: ['GROUPS', 'statsGroups', groupsHere] };
+  const calendar = statsState.view === 'calendar';
+  // goal chips wear each goal's own card + text colors
+  const goalsHere = calendar ? calendarGoalChoices().map(t => [t.id, t.name, `--chip-bg:${t.color};--chip-ink:${t.textColor || (inkClass(t.color) === 'on-light' ? '#1c2a4a' : '#ffffff')}`]) : [];
+  const lists = calendar
+    ? { groups: ['GROUPS', 'statsGroups', groupsHere], goals: ['GOALS', 'calGoals', goalsHere] }
+    : { types: ['GOAL TYPES', 'statsTypes', typesHere], groups: ['GROUPS', 'statsGroups', groupsHere] };
+  if (!lists[showOpen]) showOpen = Object.keys(lists)[0];
   const picked = key => state.settings[key]; // null = All
   const summary = (key, items) => {
     const list = picked(key);
@@ -2514,7 +2591,7 @@ function renderShowPanel() {
     save(); $('#stats-list').scrollTop = 0; renderStats();
   };
   panel.append(el('div', { class: 'show-tabs' }, Object.entries(lists)
-    .filter(([id, [, , items]]) => id === 'types' || items.length)
+    .filter(([id, [, , items]]) => id !== 'groups' || items.length)
     .map(([id, [title, key, items]]) => el('button', {
       type: 'button',
       class: `show-tab${showOpen === id ? ' open' : ''}${picked(key) ? ' filtered' : ''}`,
@@ -2526,7 +2603,9 @@ function renderShowPanel() {
     const list = picked(key);
     panel.append(el('div', { class: 'show-chips' },
       el('button', { type: 'button', class: `group-chip${!list ? ' on' : ''}`, onclick: () => pick(key, items, null) }, 'All'),
-      items.map(([k, label]) => el('button', { type: 'button', class: `group-chip${list && list.includes(k) ? ' on' : ''}`, 'aria-pressed': String(!!(list && list.includes(k))), onclick: () => pick(key, items, k) }, label))));
+      items.map(([k, label, style]) => el('button', { type: 'button', class: `group-chip${style ? ' goal-chip' : ''}${list && list.includes(k) ? ' on' : ''}`, style: style || '', 'aria-pressed': String(!!(list && list.includes(k))), onclick: () => pick(key, items, k) }, label))));
+  } else if (showOpen === 'goals') {
+    panel.append(el('p', { class: 'note show-empty' }, 'No goals with a goal amount for this calendar.'));
   }
 }
 $('#stats-show').addEventListener('click', () => { $('#stats-show-panel').classList.toggle('hidden'); renderShowPanel(); });
@@ -2635,7 +2714,7 @@ function renderCalendar(list, shown) {
 
   list.append(
     el('div', { class: 'seg tabs cal-types' }, CAL_TYPES.map(([k, label]) =>
-      el('button', { type: 'button', class: k === type ? 'on' : '', onclick: () => { calState.type = k; calState.offset = 0; renderStats(); } }, label))),
+      el('button', { type: 'button', class: k === type ? 'on' : '', onclick: () => { calState.type = k; calState.offset = 0; state.settings.calGoals = null; save(); renderStats(); } }, label))),
     el('p', { class: 'cal-summary' }, summary),
     box,
     el('div', { class: 'cal-legend' }, [['0–33%', '#ef4444'], ['34–66%', '#f97316'], ['67–99%', '#facc15'], ['100%', '#22c55e']]

@@ -1629,3 +1629,26 @@ html[data-theme="dark"] .card.off-day.off-day { background: #2a3140 !important; 
 .todo-section-delete { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: #e5484d; color: #fff; }
 .todo-section-delete:active { background: #c93b40; }
 .todo-section-delete .trash-icon { display: grid; }
+
+/* #4: no double-tap zoom (and no tap delay); pinch-zoom still works */
+html { touch-action: manipulation; }
+
+/* #6: a little more header below the to-do tabs */
+.todo-tabs { padding-bottom: 10px; }
+
+/* ---------- Group vision ---------- */
+.vision-btn { flex: none; width: 34px; height: 30px; display: grid; place-items: center; color: var(--muted); border-radius: 8px; }
+.vision-btn.has { color: var(--accent); }
+.vision-btn .eye { display: grid; }
+.vision-head { display: flex; align-items: center; gap: 8px; color: var(--accent); }
+.vision-head h3 { color: var(--navy); }
+.vision-input { min-height: 150px; line-height: 1.5; }
+.vision-card { margin: 10px 0 4px; padding: 12px 14px; border-radius: 12px; background: var(--soft); }
+.vision-card-head { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: .1em; color: var(--accent); }
+.sheet .vision-card p { margin: 6px 0 0; color: var(--navy); white-space: pre-wrap; }
+
+/* ---------- Calendar GOALS chips in each goal's colors ---------- */
+.group-chip.goal-chip { background: var(--chip-bg); border-color: var(--chip-bg); color: var(--chip-ink); }
+.group-chip.goal-chip.on { box-shadow: 0 0 0 2.5px var(--bg), 0 0 0 4.5px var(--fill); }
+.group-chip.goal-chip.on::before { content: '✓'; font-weight: 800; margin-right: 2px; }
+.show-empty { margin: 10px 2px 0; }
