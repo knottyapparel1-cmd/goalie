@@ -25,7 +25,7 @@ Then open http://localhost:5173. (The offline service worker is skipped on local
 
 ## Updating
 When you change any app file, bump the version in **three** places:
-1. `CACHE` in `sw.js` (e.g. `goalie-v87`)
+1. `CACHE` in `sw.js` (e.g. `goalie-v88`)
 2. `<meta name="goalie-version">` in `index.html`
 3. `version` in `version.json` (must match the meta tag)
 
