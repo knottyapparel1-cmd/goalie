@@ -786,7 +786,7 @@ function tallyCard(t, bump) {
   // Hold to lift and drag anywhere (in edit mode a plain press drags); held still = the menu.
   let fromGroup = '';
   dragSort(card, {
-    holdMs: editMode ? 0 : 100, // ready to drag after 0.1s
+    holdMs: editMode ? 0 : 250, // ready to drag after 0.25s
     menuMs: 500, // held still 0.5s: the menu
     scroller: $('#tally-list'),
     itemSelector: '#tally-list .card',
