@@ -1923,29 +1923,41 @@ const fromYmd = ymd => { const [y, m, d] = ymd.split('-').map(Number); return ne
 // Returns { node, get } where get() is the picked day at midnight.
 // One spinning column: labels, the starting row, a callback when it settles, and a class.
 const WHEEL_ROW = 36;
-function wheel(labels, index, onPick, cls) {
-    const ROW = WHEEL_ROW;
-    const items = labels.map((label, i) => el('div', { class: 'wheel-item', onclick: () => col.scrollTo({ top: i * ROW, behavior: 'smooth' }) }, String(label)));
-    const col = el('div', { class: `wheel ${cls}` }, el('div', { class: 'wheel-pad' }), items, el('div', { class: 'wheel-pad' }));
-    const mark = i => items.forEach((it, j) => it.classList.toggle('on', j === i));
-    let timer = null;
-    col.addEventListener('scroll', () => {
-      const i = Math.max(0, Math.min(labels.length - 1, Math.round(col.scrollTop / ROW)));
-      mark(i);
-      clearTimeout(timer);
-      timer = setTimeout(() => onPick(i), 90);
-    });
-    let placed = false;
-    col.setIndex = i => { col.scrollTop = i * ROW; mark(i); placed = true; };
-    // the row in the middle right now (even mid-spin), so a quick Save never gets the previous value
-    col.index = () => (placed ? Math.max(0, Math.min(labels.length - 1, Math.round(col.scrollTop / ROW))) : index);
-    col.items = items;
-    mark(index);
-    setTimeout(() => col.setIndex(index), 0); // once it's on the page
-    return col;
+// loop: the list repeats endlessly (after 12 comes 1 again). Values passed to onPick and returned
+// by index() are always positions in labels.
+function wheel(labels, index, onPick, cls, { loop = false } = {}) {
+  const ROW = WHEEL_ROW, n = labels.length;
+  const CYCLES = loop ? 21 : 1, MID = loop ? 10 : 0; // loop: 21 copies, starting in the middle one
+  const all = Array.from({ length: n * CYCLES }, (_, i) => labels[i % n]);
+  const items = all.map((label, i) => el('div', { class: 'wheel-item', onclick: () => col.scrollTo({ top: i * ROW, behavior: 'smooth' }) }, String(label)));
+  const col = el('div', { class: `wheel ${cls}` }, el('div', { class: 'wheel-pad' }), items, el('div', { class: 'wheel-pad' }));
+  const mark = r => items.forEach((it, j) => it.classList.toggle('on', j === r));
+  const rawNow = () => Math.max(0, Math.min(all.length - 1, Math.round(col.scrollTop / ROW)));
+  let timer = null, placed = false;
+  col.addEventListener('scroll', () => {
+    const r = rawNow();
+    mark(r);
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      // drifting toward either end of a looping list: jump back to the same value in the middle copy
+      if (loop && (r < n * 3 || r > n * (CYCLES - 3))) col.setRaw(MID * n + (r % n));
+      onPick(r % n);
+    }, 90);
+  });
+  col.setRaw = r => { col.scrollTop = r * ROW; mark(r); placed = true; };
+  col.setIndex = i => col.setRaw(MID * n + i);
+  // the row in the middle right now (even mid-spin), so a quick Save never gets the previous value
+  col.index = () => (placed ? rawNow() % n : index);
+  // items for the value at position i (every copy of it, for looping lists)
+  col.items = labels.map((_, i) => items[MID * n + i]);
+  col.allItems = items;
+  mark(MID * n + index);
+  setTimeout(() => col.setIndex(index), 0); // once it's on the page
+  return col;
 }
 
-function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
+// compact: three rows tall (the picked row plus one faded row above and below)
+function dateWheels(initial, { minYear, maxYear, onChange, compact = false } = {}) {
   let m = initial.getMonth(), d = initial.getDate(), y = initial.getFullYear();
   minYear = Math.min(minYear ?? y - 5, y); maxYear = Math.max(maxYear ?? y + 5, y);
   const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i);
@@ -1953,7 +1965,7 @@ function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
 
   const fixDay = () => {
     const max = daysInMonth(y, m);
-    dayWheel.items.forEach((it, i) => it.classList.toggle('off', i + 1 > max));
+    dayWheel.allItems.forEach((it, i) => it.classList.toggle('off', (i % 31) + 1 > max));
     if (d > max) { d = max; dayWheel.setIndex(d - 1); }
     onChange?.(new Date(y, m, d));
   };
@@ -1962,7 +1974,7 @@ function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
   const yearWheel = wheel(years, y - minYear, i => { y = years[i]; fixDay(); }, 'wheel-year');
   fixDay();
   return {
-    node: el('div', { class: 'wheels' }, monthWheel, dayWheel, yearWheel),
+    node: el('div', { class: `wheels${compact ? ' compact' : ''}` }, monthWheel, dayWheel, yearWheel),
     get: () => {
       const yy = years[yearWheel.index()], mm = monthWheel.index(), dd = dayWheel.index() + 1;
       return new Date(yy, mm, Math.min(dd, daysInMonth(yy, mm)));
@@ -1971,15 +1983,15 @@ function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
 }
 
 // Time picker with spinning wheels: hour, minute (5-minute steps) and AM/PM. get() returns [hours 0-23, minutes].
-function timeWheels(initial) {
+function timeWheels(initial, { compact = false } = {}) {
   const hours = Array.from({ length: 12 }, (_, i) => i + 1);
   const minutes = Array.from({ length: 12 }, (_, i) => pad2(i * 5));
   const h24 = initial.getHours(), min = Math.min(55, Math.round(initial.getMinutes() / 5) * 5);
-  const hourWheel = wheel(hours, (h24 % 12 || 12) - 1, () => {}, 'wheel-hour');
-  const minuteWheel = wheel(minutes, min / 5, () => {}, 'wheel-minute');
+  const hourWheel = wheel(hours, (h24 % 12 || 12) - 1, () => {}, 'wheel-hour', { loop: true }); // … 11, 12, 1, 2 …
+  const minuteWheel = wheel(minutes, min / 5, () => {}, 'wheel-minute', { loop: true }); // … 50, 55, 00, 05 …
   const ampmWheel = wheel(['AM', 'PM'], h24 >= 12 ? 1 : 0, () => {}, 'wheel-ampm');
   return {
-    node: el('div', { class: 'wheels time-wheels' }, hourWheel, minuteWheel, ampmWheel),
+    node: el('div', { class: `wheels time-wheels${compact ? ' compact' : ''}` }, hourWheel, minuteWheel, ampmWheel),
     get: () => {
       const h = hours[hourWheel.index()] % 12 + (ampmWheel.index() ? 12 : 0);
       return [h, minuteWheel.index() * 5];
@@ -3104,8 +3116,8 @@ function laterSheet(latest) {
   const now = new Date();
   // start one hour from now, on the hour
   const start = new Date(now.getTime() + 3600000); start.setMinutes(0, 0, 0);
-  const wheels = dateWheels(start, { minYear: now.getFullYear(), maxYear: now.getFullYear() + 1 });
-  const clock = timeWheels(start);
+  const wheels = dateWheels(start, { minYear: now.getFullYear(), maxYear: now.getFullYear() + 1, compact: true });
+  const clock = timeWheels(start, { compact: true });
   const error = el('p', { class: 'form-error hidden' });
   const schedule = () => {
     const day = wheels.get();
@@ -3120,9 +3132,8 @@ function laterSheet(latest) {
   openSheet(
     el('h3', {}, 'When should Goalie update?'),
     el('p', {}, `Version ${latest} installs itself then. If Goalie is closed at that time, it updates the next time you open it.`),
-    el('div', { class: 'when-row' },
-      el('div', { class: 'sheet-label' }, 'DATE', wheels.node),
-      el('div', { class: 'sheet-label' }, 'TIME', clock.node)),
+    el('div', { class: 'sheet-label' }, 'DATE', wheels.node),
+    el('div', { class: 'sheet-label' }, 'TIME', clock.node),
     error,
     el('button', { class: 'sheet-btn primary', onclick: schedule }, 'Schedule update'),
     el('button', { class: 'sheet-btn', onclick: () => switchSheet(() => updatePrompt(latest)) }, 'Back'),

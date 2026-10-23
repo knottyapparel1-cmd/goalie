@@ -1658,9 +1658,11 @@ html { touch-action: manipulation; }
 .cal-cell.over.current, .cal-bar.over.current { box-shadow: inset 0 0 0 2px #d4a72c, inset 0 0 0 4px var(--navy); }
 .cal-legend i.over, .cal-dot.over { background: #ffffff; box-shadow: inset 0 0 0 2px #d4a72c; }
 
-/* ---------- Date + time side by side (Schedule update) ---------- */
-.when-row { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 8px; align-items: end; }
-.when-row .sheet-label { margin-top: 6px; min-width: 0; }
-.when-row .wheels { margin-bottom: 4px; }
+/* ---------- Compact wheels: three rows (faded row above and below the picked one) ---------- */
+.wheels.compact { height: 108px; margin: 6px 0 4px;
+  -webkit-mask-image: linear-gradient(rgba(0,0,0,.35), #000 33%, #000 67%, rgba(0,0,0,.35));
+          mask-image: linear-gradient(rgba(0,0,0,.35), #000 33%, #000 67%, rgba(0,0,0,.35)); }
+.wheels.compact::before { top: 36px; }
+.wheels.compact .wheel { height: 108px; }
+.wheels.compact .wheel-pad { height: 36px; }
 .wheels.time-wheels { grid-template-columns: 1fr 1fr 1fr; }
-.when-row .wheel-item { font-size: 16px; }
