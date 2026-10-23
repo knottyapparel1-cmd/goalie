@@ -1680,7 +1680,7 @@ html { touch-action: manipulation; }
 
 /* ---------- To-do header: 10px below the tabs, then a hard line (the .seg.tabs rule used to
    override the spacing) ---------- */
-#screen-todo .todo-tabs { padding: 6px var(--gutter) 10px; border-bottom: 1px solid var(--line); }
+#screen-todo .todo-tabs { padding: 6px var(--gutter) 7px; border-bottom: 1px solid var(--line); }
 
 /* ---------- To-do footer: + NEW SECTION and + NEW TO-DO share the bottom banner ---------- */
 .todo-add-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -1704,5 +1704,5 @@ html { touch-action: manipulation; }
 .todo-section.colored.custom-ink.custom-ink .todo-row { border-bottom-color: var(--sec-ink); }
 
 /* To-do footer: a hard line above the buttons instead of the fade (matches the header) */
-.todo-add-wrap { background: var(--bg); border-top: 1px solid var(--line); padding-top: 12px; }
+.todo-add-wrap { background: var(--bg); border-top: 1px solid var(--line); padding-top: 7px; }
 .todo-scroll { padding-bottom: 96px; }
