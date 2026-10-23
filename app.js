@@ -3524,6 +3524,7 @@ function todoSection(name, items) {
   const open = items.filter(t => !t.done).length;
   const key = name || '__none__';
   const color = name && (state.settings.todoSectionColors || {})[name];
+  const ink = name && (state.settings.todoSectionTextColors || {})[name];
   const head = foldHead(key, name ? name.toUpperCase() : 'NO SECTION', open,
     el('div', { class: 'todo-head-actions' },
       todoEditing && name ? el('button', { type: 'button', class: 'todo-section-delete', 'aria-label': `Delete ${name}`, onclick: () => deleteSectionSheet(name) }, TRASH_ICON()) : null,
@@ -3532,8 +3533,8 @@ function todoSection(name, items) {
       todoEditing ? null : el('button', { type: 'button', class: 'todo-section-add', 'aria-label': `Add to ${name || 'no section'}`, onclick: () => todoSheet(null, name) }, '+ Add')));
   const folded = todoEditing || todoFolded(key);
   const section = el('div', {
-    class: `todo-section${color ? ` colored ${inkClass(color)}` : ''}${todoEditing ? ' editing' : ''}`,
-    style: color ? `background:${color}` : '',
+    class: `todo-section${color ? ` colored ${inkClass(color)}` : ''}${ink ? ' custom-ink' : ''}${todoEditing ? ' editing' : ''}`,
+    style: [color ? `background:${color}` : '', ink ? `--sec-ink:${ink}` : ''].filter(Boolean).join(';'),
     'data-section': name,
   },
   head,
@@ -3705,16 +3706,34 @@ function todoSheet(t, presetSection) {
 }
 
 // The card color grid for a to-do section, plus NO COLOR. onPick(color or '').
-function sectionColorGrid(current, onPick) {
+// Section colors: one grid sets either the section's background or its text color (toggle above it),
+// like the goal form. "" = no background / automatic text color. onPick({ bg, text }).
+function sectionColorPicker(current, onPick) {
+  const picked = { bg: current.bg || '', text: current.text || '' };
+  let target = 'bg';
+  const tabs = el('div', { class: 'seg pills section-color-target' },
+    el('button', { type: 'button', 'data-t': 'bg', onclick: () => setTarget('bg') }, 'SECTION COLOR'),
+    el('button', { type: 'button', 'data-t': 'text', onclick: () => setTarget('text') }, 'TEXT COLOR'));
   const grid = el('div', { class: 'colors section-colors' }, PALETTE.flatMap(({ name: fam, shades }) => shades.map((c, i) =>
-    el('button', { type: 'button', class: `swatch${c === '#ffffff' ? ' swatch-white' : ''}${current === c ? ' on' : ''}`, style: `background:${c}`, 'data-c': c, 'aria-label': `${fam} ${i + 1}`, onclick: () => pick(c) }))));
-  const none = el('button', { type: 'button', class: `text-auto${!current ? ' on' : ''}`, onclick: () => pick('') }, 'NO COLOR');
-  const pick = c => {
-    grid.querySelectorAll('.swatch').forEach(sw => sw.classList.toggle('on', sw.dataset.c === c));
-    none.classList.toggle('on', !c);
-    onPick(c);
+    el('button', { type: 'button', class: `swatch${c === '#ffffff' ? ' swatch-white' : ''}`, style: `background:${c}`, 'data-c': c, 'aria-label': `${fam} ${i + 1}`, onclick: () => pick(c) }))));
+  const clear = el('button', { type: 'button', class: 'text-auto', onclick: () => pick('') });
+  const sync = () => {
+    tabs.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.t === target));
+    grid.querySelectorAll('.swatch').forEach(sw => sw.classList.toggle('on', sw.dataset.c === picked[target]));
+    clear.textContent = target === 'bg' ? 'NO COLOR' : 'AUTO (BEST CONTRAST)';
+    clear.classList.toggle('on', !picked[target]);
   };
-  return [grid, none];
+  const setTarget = t => { target = t; sync(); };
+  const pick = c => { picked[target] = c; sync(); onPick({ ...picked }); };
+  sync();
+  return [tabs, grid, clear];
+}
+const sectionColors = () => state.settings.todoSectionColors || (state.settings.todoSectionColors = {});
+const sectionTextColors = () => state.settings.todoSectionTextColors || (state.settings.todoSectionTextColors = {});
+function setSectionColors(name, { bg, text }) {
+  const b = sectionColors(), t = sectionTextColors();
+  if (bg) b[name] = bg; else delete b[name];
+  if (text) t[name] = text; else delete t[name];
 }
 
 // Trash can icon for deleting a section in EDIT.
@@ -3731,8 +3750,8 @@ function deleteSectionSheet(name) {
   const n = items.length, word = `to-do${n === 1 ? '' : 's'}`;
   const dropSection = () => {
     state.todoSections = state.todoSections.filter(s => s !== name);
-    const colors = state.settings.todoSectionColors;
-    if (colors) delete colors[name];
+    delete sectionColors()[name];
+    delete sectionTextColors()[name];
     state.settings.todoCollapsed = (state.settings.todoCollapsed || []).filter(k => k !== name);
   };
   openSheet(
@@ -3758,11 +3777,11 @@ function deleteSectionSheet(name) {
 
 function newSectionSheet() {
   const input = el('input', { class: 'text-input', type: 'text', maxlength: 30, placeholder: 'e.g. Weekly Chores' });
-  let color = '';
+  let colors = { bg: '', text: '' };
   const add = () => {
     const name = input.value.trim();
     if (!name) return;
-    if (color) (state.settings.todoSectionColors ||= {})[name] = color;
+    setSectionColors(name, colors);
     if (!state.todoSections.includes(name)) todoChange(() => state.todoSections.push(name));
     else { save(); renderTodos(); }
     closeSheet();
@@ -3771,8 +3790,8 @@ function newSectionSheet() {
   openSheet(
     el('h3', {}, 'New section'),
     input,
-    el('div', { class: 'sheet-label' }, 'SECTION COLOR'),
-    sectionColorGrid('', c => { color = c; }),
+    el('div', { class: 'sheet-label' }, 'COLORS'),
+    sectionColorPicker(colors, c => { colors = c; }),
     el('button', { class: 'sheet-btn primary', onclick: add }, 'Add section'),
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'));
   setTimeout(() => input.focus(), 250);
@@ -3780,22 +3799,20 @@ function newSectionSheet() {
 
 function sectionMenu(name) {
   const input = el('input', { class: 'text-input', type: 'text', maxlength: 30, value: name });
-  const colors = state.settings.todoSectionColors || (state.settings.todoSectionColors = {});
-  const pickColor = c => {
-    if (c) colors[name] = c; else delete colors[name];
-    save(); renderTodos();
-  };
+  const colors = sectionColors(), textColors = sectionTextColors();
+  const pickColor = c => { setSectionColors(name, c); save(); renderTodos(); };
   openSheet(
     el('h3', {}, name),
     el('div', { class: 'sheet-label' }, 'RENAME', input),
-    el('div', { class: 'sheet-label' }, 'SECTION COLOR'),
-    sectionColorGrid(colors[name] || '', pickColor),
+    el('div', { class: 'sheet-label' }, 'COLORS'),
+    sectionColorPicker({ bg: colors[name] || '', text: textColors[name] || '' }, pickColor),
     el('button', {
       class: 'sheet-btn primary',
       onclick: () => {
         const next = input.value.trim();
         if (next && next !== name) todoChange(() => {
           if (colors[name]) { colors[next] = colors[name]; delete colors[name]; }
+          if (textColors[name]) { textColors[next] = textColors[name]; delete textColors[name]; }
           state.todoSections = state.todoSections.map(s => (s === name ? next : s)).filter((s, i, a) => a.indexOf(s) === i);
           state.todos.forEach(t => { if (t.section === name) t.section = next; });
         });

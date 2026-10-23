@@ -1686,3 +1686,14 @@ html { touch-action: manipulation; }
 .todo-add-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .todo-add-wrap .submit-btn { font-size: 16px; letter-spacing: .04em; }
 .submit-btn.secondary { background: var(--soft); color: var(--navy); }
+
+/* ---------- To-do sections: custom text color (beats the automatic navy / white) ---------- */
+.section-color-target { margin: 6px 0 10px; }
+.section-color-target button { flex: 1; height: 40px; }
+.todo-section.custom-ink.custom-ink, .todo-section.custom-ink.custom-ink .todo-section-name,
+.todo-section.custom-ink.custom-ink .todo-title, .todo-section.custom-ink.custom-ink .todo-section-add,
+.todo-section.custom-ink.custom-ink .todo-section-more, .todo-section.custom-ink.custom-ink .todo-chev,
+.todo-section.custom-ink.custom-ink .todo-empty, .todo-section.custom-ink.custom-ink .todo-grip,
+.todo-section.custom-ink.custom-ink .todo-sec { color: var(--sec-ink); }
+.todo-section.custom-ink.custom-ink .todo-check { border-color: var(--sec-ink); }
+.todo-section.custom-ink.custom-ink .todo-row { border-bottom-color: color-mix(in srgb, var(--sec-ink) 20%, transparent); }
