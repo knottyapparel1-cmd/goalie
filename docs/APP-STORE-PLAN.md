@@ -36,3 +36,7 @@ Notes for whoever picks this up next (e.g. Claude Code on the Mac). Everything b
 
 ## App Store listing needs
 Privacy policy URL, support URL, screenshots (6.7" and 6.5"), description, keywords, age rating, and a 1024×1024 icon. The logo is navy: three rounded bars (short, tall, medium), a line, then GOALIE. Source images are in `icons/`; regenerate at 1024.
+
+## Updates after launch
+- **Every update gets a verdict:** "Live update OK" (fixes, design and text tweaks, small improvements in the web layer) or "Send through App Store review" (anything native, payments, new personal data, big changes to what the app is, anything Apple might reject). Never use live updates to hide something from Apple.
+- The web app's **Update now / Schedule for later** pop-up (date and time wheels) carries over: live updates use it as-is. App Store updates show a version that opens the App Store, and "Schedule for later" sets a reminder.
