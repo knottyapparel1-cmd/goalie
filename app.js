@@ -1921,14 +1921,10 @@ const fromYmd = ymd => { const [y, m, d] = ymd.split('-').map(Number); return ne
 
 // Date picker with three spinning wheels (month, day, year), like the iPhone's.
 // Returns { node, get } where get() is the picked day at midnight.
-function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
-  const ROW = 36;
-  let m = initial.getMonth(), d = initial.getDate(), y = initial.getFullYear();
-  minYear = Math.min(minYear ?? y - 5, y); maxYear = Math.max(maxYear ?? y + 5, y);
-  const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i);
-  const days = Array.from({ length: 31 }, (_, i) => i + 1);
-
-  const wheel = (labels, index, onPick, cls) => {
+// One spinning column: labels, the starting row, a callback when it settles, and a class.
+const WHEEL_ROW = 36;
+function wheel(labels, index, onPick, cls) {
+    const ROW = WHEEL_ROW;
     const items = labels.map((label, i) => el('div', { class: 'wheel-item', onclick: () => col.scrollTo({ top: i * ROW, behavior: 'smooth' }) }, String(label)));
     const col = el('div', { class: `wheel ${cls}` }, el('div', { class: 'wheel-pad' }), items, el('div', { class: 'wheel-pad' }));
     const mark = i => items.forEach((it, j) => it.classList.toggle('on', j === i));
@@ -1947,7 +1943,13 @@ function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
     mark(index);
     setTimeout(() => col.setIndex(index), 0); // once it's on the page
     return col;
-  };
+}
+
+function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
+  let m = initial.getMonth(), d = initial.getDate(), y = initial.getFullYear();
+  minYear = Math.min(minYear ?? y - 5, y); maxYear = Math.max(maxYear ?? y + 5, y);
+  const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i);
+  const days = Array.from({ length: 31 }, (_, i) => i + 1);
 
   const fixDay = () => {
     const max = daysInMonth(y, m);
@@ -1964,6 +1966,23 @@ function dateWheels(initial, { minYear, maxYear, onChange } = {}) {
     get: () => {
       const yy = years[yearWheel.index()], mm = monthWheel.index(), dd = dayWheel.index() + 1;
       return new Date(yy, mm, Math.min(dd, daysInMonth(yy, mm)));
+    },
+  };
+}
+
+// Time picker with spinning wheels: hour, minute (5-minute steps) and AM/PM. get() returns [hours 0-23, minutes].
+function timeWheels(initial) {
+  const hours = Array.from({ length: 12 }, (_, i) => i + 1);
+  const minutes = Array.from({ length: 12 }, (_, i) => pad2(i * 5));
+  const h24 = initial.getHours(), min = Math.min(55, Math.round(initial.getMinutes() / 5) * 5);
+  const hourWheel = wheel(hours, (h24 % 12 || 12) - 1, () => {}, 'wheel-hour');
+  const minuteWheel = wheel(minutes, min / 5, () => {}, 'wheel-minute');
+  const ampmWheel = wheel(['AM', 'PM'], h24 >= 12 ? 1 : 0, () => {}, 'wheel-ampm');
+  return {
+    node: el('div', { class: 'wheels time-wheels' }, hourWheel, minuteWheel, ampmWheel),
+    get: () => {
+      const h = hours[hourWheel.index()] % 12 + (ampmWheel.index() ? 12 : 0);
+      return [h, minuteWheel.index() * 5];
     },
   };
 }
@@ -3086,11 +3105,11 @@ function laterSheet(latest) {
   // start one hour from now, on the hour
   const start = new Date(now.getTime() + 3600000); start.setMinutes(0, 0, 0);
   const wheels = dateWheels(start, { minYear: now.getFullYear(), maxYear: now.getFullYear() + 1 });
-  const time = el('input', { class: 'text-input', type: 'time', value: toTimeInput(start) });
+  const clock = timeWheels(start);
   const error = el('p', { class: 'form-error hidden' });
   const schedule = () => {
     const day = wheels.get();
-    const [hh, mm] = (time.value || '00:00').split(':').map(Number);
+    const [hh, mm] = clock.get();
     const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hh || 0, mm || 0);
     if (at.getTime() <= Date.now()) { error.textContent = 'Pick a time that hasn\u2019t happened yet.'; error.classList.remove('hidden'); return; }
     state.settings.updateAt = at.getTime();
@@ -3101,8 +3120,9 @@ function laterSheet(latest) {
   openSheet(
     el('h3', {}, 'When should Goalie update?'),
     el('p', {}, `Version ${latest} installs itself then. If Goalie is closed at that time, it updates the next time you open it.`),
-    el('div', { class: 'sheet-label' }, 'DATE', wheels.node),
-    el('label', { class: 'sheet-label' }, 'TIME', time),
+    el('div', { class: 'when-row' },
+      el('div', { class: 'sheet-label' }, 'DATE', wheels.node),
+      el('div', { class: 'sheet-label' }, 'TIME', clock.node)),
     error,
     el('button', { class: 'sheet-btn primary', onclick: schedule }, 'Schedule update'),
     el('button', { class: 'sheet-btn', onclick: () => switchSheet(() => updatePrompt(latest)) }, 'Back'),
