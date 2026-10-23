@@ -1666,3 +1666,14 @@ html { touch-action: manipulation; }
 .wheels.compact .wheel { height: 108px; }
 .wheels.compact .wheel-pad { height: 36px; }
 .wheels.time-wheels { grid-template-columns: 1fr 1fr 1fr; }
+
+/* ---------- Tight sheets (Schedule update): everything fits on short screens ---------- */
+.sheet-btn-row { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px; margin-top: 12px; }
+.sheet .sheet-btn-row .sheet-btn { margin-top: 0; }
+.sheet.tight { padding-top: 6px; }
+.sheet.tight::before { margin-bottom: 8px; }
+.sheet.tight h3 { font-size: 20px; margin: 0; }
+.sheet.tight .sheet-note { margin: 2px 0 4px; font-size: 13.5px; }
+.sheet.tight .sheet-label { margin-top: 8px; }
+.sheet.tight .wheels.compact { margin: 4px 0 0; }
+.sheet.tight { max-height: calc(100vh - 24px - env(safe-area-inset-top, 0px)); }

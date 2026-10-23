@@ -3131,13 +3131,16 @@ function laterSheet(latest) {
   };
   openSheet(
     el('h3', {}, 'When should Goalie update?'),
-    el('p', {}, `Version ${latest} installs itself then. If Goalie is closed at that time, it updates the next time you open it.`),
+    el('p', { class: 'sheet-note' }, `Version ${latest} installs then (or next time you open Goalie).`),
     el('div', { class: 'sheet-label' }, 'DATE', wheels.node),
     el('div', { class: 'sheet-label' }, 'TIME', clock.node),
     error,
-    el('button', { class: 'sheet-btn primary', onclick: schedule }, 'Schedule update'),
-    el('button', { class: 'sheet-btn', onclick: () => switchSheet(() => updatePrompt(latest)) }, 'Back'),
+    // side by side, so the whole sheet fits on short screens without scrolling
+    el('div', { class: 'sheet-btn-row' },
+      el('button', { class: 'sheet-btn', onclick: () => switchSheet(() => updatePrompt(latest)) }, 'Back'),
+      el('button', { class: 'sheet-btn primary', onclick: schedule }, 'Schedule update')),
   );
+  $('#sheet').classList.add('tight');
 }
 
 // Switch to the new version: the new offline copy takes over, then the page reloads.
@@ -3825,6 +3828,7 @@ $('#btn-todo-redo').addEventListener('click', todoRedo);
    ========================================================= */
 function openSheet(...children) {
   const sheet = $('#sheet');
+  sheet.classList.remove('tight'); // (only the sheet that asks for it is compact)
   sheet.style.transform = '';
   sheet.style.transition = '';
   sheet.innerHTML = '';
