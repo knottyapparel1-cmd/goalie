@@ -1696,4 +1696,9 @@ html { touch-action: manipulation; }
 .todo-section.custom-ink.custom-ink .todo-empty, .todo-section.custom-ink.custom-ink .todo-grip,
 .todo-section.custom-ink.custom-ink .todo-sec { color: var(--sec-ink); }
 .todo-section.custom-ink.custom-ink .todo-check { border-color: var(--sec-ink); }
-.todo-section.custom-ink.custom-ink .todo-row { border-bottom-color: color-mix(in srgb, var(--sec-ink) 20%, transparent); }
+.todo-section.custom-ink.custom-ink .todo-row { border-bottom-color: var(--sec-ink); }
+
+/* Colored sections: the lines between to-dos match the text color */
+.todo-section.colored.on-dark .todo-row { border-bottom-color: #ffffff; }
+.todo-section.colored.on-light .todo-row { border-bottom-color: #1c2a4a; }
+.todo-section.colored.custom-ink.custom-ink .todo-row { border-bottom-color: var(--sec-ink); }
