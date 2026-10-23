@@ -1379,7 +1379,6 @@ html[data-theme="dark"] { --statusbar: var(--bg); }
 .todo-section.prio.p-low { border-left-color: #4aa8e2; }
 .todo-section.prio.p-none { border-left-color: #9aa0a8; }
 .todo-prio-q { font-size: 12px; color: var(--muted); text-align: right; }
-.todo-new-section { width: 100%; padding: 14px; border-radius: 12px; border: 1.5px dashed var(--line); font-size: 15px; font-weight: 700; color: var(--accent); }
 /* to-do form */
 .todo-sec-chips { margin: 6px 0 8px; }
 .todo-sec-chips .chip.on { background: var(--fill); color: #fff; }
@@ -1705,4 +1704,4 @@ html { touch-action: manipulation; }
 
 /* To-do footer: a hard line above the buttons instead of the fade (matches the header) */
 .todo-add-wrap { background: var(--bg); border-top: 1px solid var(--line); padding-top: 7px; }
-.todo-scroll { padding-bottom: 96px; }
+.todo-scroll { padding-bottom: calc(100px + var(--safe-bottom)); } /* clears the footer, including the iPhone home bar space */
