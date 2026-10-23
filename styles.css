@@ -1705,3 +1705,6 @@ html { touch-action: manipulation; }
 /* To-do footer: a hard line above the buttons instead of the fade (matches the header) */
 .todo-add-wrap { background: var(--bg); border-top: 1px solid var(--line); padding-top: 7px; }
 .todo-scroll { padding-bottom: calc(100px + var(--safe-bottom)); } /* clears the footer, including the iPhone home bar space */
+
+/* No line under the last to-do in a section */
+.todo-section .todo-row:last-child { border-bottom: 0; }
