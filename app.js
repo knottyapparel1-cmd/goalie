@@ -3787,12 +3787,21 @@ function newSectionSheet() {
     closeSheet();
   };
   input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+  // The Add button previews the picked colors: the section color as its background, the text color
+  // (or the automatic navy / white) as its text.
+  const addBtn = el('button', { class: 'sheet-btn primary', onclick: add }, 'Add section');
+  const paintAdd = () => {
+    const bg = colors.bg, ink = colors.text || (bg ? (inkClass(bg) === 'on-light' ? '#1c2a4a' : '#ffffff') : '');
+    addBtn.style.background = bg || '';
+    addBtn.style.color = ink || '';
+    addBtn.style.boxShadow = bg && luminance(bg) > 0.85 ? 'inset 0 0 0 1.5px var(--line)' : '';
+  };
   openSheet(
     el('h3', {}, 'New section'),
     input,
     el('div', { class: 'sheet-label' }, 'COLORS'),
-    sectionColorPicker(colors, c => { colors = c; }),
-    el('button', { class: 'sheet-btn primary', onclick: add }, 'Add section'),
+    sectionColorPicker(colors, c => { colors = c; paintAdd(); }),
+    addBtn,
     el('button', { class: 'sheet-btn', onclick: closeSheet }, 'Cancel'));
   setTimeout(() => input.focus(), 250);
 }
