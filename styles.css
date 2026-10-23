@@ -1678,11 +1678,11 @@ html { touch-action: manipulation; }
 .sheet.tight .wheels.compact { margin: 4px 0 0; }
 .sheet.tight { max-height: calc(100vh - 24px - env(safe-area-inset-top, 0px)); }
 
-/* ---------- To-do header: the 10px below the tabs (the .seg.tabs rule was overriding it), and the
-   same fade the footer has, so the list fades out under the header as it scrolls ---------- */
-#screen-todo .todo-tabs { padding: 6px var(--gutter) 0; position: relative; z-index: 2; background: var(--bg); }
-#screen-todo .todo-tabs::after {
-  content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 24px;
-  background: linear-gradient(to bottom, var(--bg), transparent); pointer-events: none;
-}
-#screen-todo .todo-scroll { padding-top: 22px; } /* at rest, nothing sits under the fade */
+/* ---------- To-do header: 10px below the tabs, then a hard line (the .seg.tabs rule used to
+   override the spacing) ---------- */
+#screen-todo .todo-tabs { padding: 6px var(--gutter) 10px; border-bottom: 1px solid var(--line); }
+
+/* ---------- To-do footer: + NEW SECTION and + NEW TO-DO share the bottom banner ---------- */
+.todo-add-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.todo-add-wrap .submit-btn { font-size: 16px; letter-spacing: .04em; }
+.submit-btn.secondary { background: var(--soft); color: var(--navy); }

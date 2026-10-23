@@ -3496,7 +3496,6 @@ function renderTodos() {
   }
   for (const name of sections) box.append(todoSection(name, state.todos.filter(t => t.section === name)));
   if (loose.length) box.append(todoSection('', loose));
-  box.append(el('button', { type: 'button', class: 'todo-new-section', onclick: newSectionSheet }, '+ New section'));
   box.append(todoTrashLink());
 }
 
@@ -3813,6 +3812,7 @@ $('#todo-view').addEventListener('click', e => {
   todoView = b.dataset.v; renderTodos();
 });
 $('#btn-todo-add').addEventListener('click', () => todoSheet(null));
+$('#btn-section-add').addEventListener('click', newSectionSheet);
 $('#btn-todo-edit').addEventListener('click', () => {
   todoEditing = !todoEditing;
   if (todoEditing) todoView = 'lists';
