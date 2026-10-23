@@ -440,6 +440,7 @@ const EDIT_SETTINGS = ['groupFilter', 'collapsedGroups', 'filter', 'groupOrder']
 function setEditMode(on) {
   const wasEditing = editMode;
   editMode = on && state.tallies.length > 0;
+  if (editMode && homeDay) { homeDay = null; toast('Back to today to rearrange'); } // cards are rearranged on today
   if (editMode && !wasEditing) {
     editSnapshot = JSON.parse(JSON.stringify({
       tallies: state.tallies, entries: state.entries, trash: state.trash,
@@ -786,8 +787,9 @@ function tallyCard(t, bump) {
   // Hold to lift and drag anywhere (in edit mode a plain press drags); held still = the menu.
   let fromGroup = '';
   dragSort(card, {
-    holdMs: editMode ? 0 : 250, // ready to drag after 0.25s
+    holdMs: editMode ? 0 : homeDay ? 500 : 250, // ready to drag after 0.25s
     menuMs: 500, // held still 0.5s: the menu
+    noDrag: !!homeDay && !editMode, // looking back at an earlier day: no rearranging (the order is shared by every day)
     scroller: $('#tally-list'),
     itemSelector: '#tally-list .card',
     containerSelector: '#tally-list .grid',
@@ -850,13 +852,14 @@ let holdReleasedAt = 0; // when a finger last let go of a hold that opened a men
 // After a drag (or a hold) ends, the phone still sends a 'tap' where the finger lifted. The cards may
 // have just redrawn, so that tap could land on a different card or its + and log something: ignore
 // every tap for a moment.
-let blockTapsUntil = 0;
+let blockTap = { until: 0, x: 0, y: 0 };
 window.addEventListener('click', e => {
-  if (Date.now() < blockTapsUntil) { e.preventDefault(); e.stopPropagation(); }
+  // only the leftover tap right where the finger lifted; taps anywhere else work immediately
+  if (Date.now() < blockTap.until && Math.hypot(e.clientX - blockTap.x, e.clientY - blockTap.y) < 40) { e.preventDefault(); e.stopPropagation(); }
 }, true);
 let dragActive = false; // something is being dragged; hold off re-rendering until it's dropped
 function dragSort(node, opts) {
-  const { holdMs = 450, menuMs = holdMs, scroller, itemSelector, containerSelector, onTap, onHold, onLift, onDrop } = opts;
+  const { holdMs = 450, menuMs = holdMs, noDrag = false, scroller, itemSelector, containerSelector, onTap, onHold, onLift, onDrop } = opts;
   const handle = opts.handle || node;
   let sx = 0, sy = 0, x = 0, y = 0, timer = null, pressed = false, lifted = false, moved = false, ghost = null, gx = 0, gy = 0, raf = null;
   let suppressClickUntil = 0;
@@ -922,7 +925,7 @@ function dragSort(node, opts) {
     node.classList.remove('lifted', 'drag-placeholder');
     pressed = lifted = false;
     dragActive = false;
-    if (wasLifted) { suppressClickUntil = Date.now() + 600; blockTapsUntil = Date.now() + 450; }
+    if (wasLifted) { suppressClickUntil = Date.now() + 600; blockTap = { until: Date.now() + 450, x, y }; }
     if (hadMenu && !wasDragged) holdReleasedAt = Date.now(); // this release mustn't close the menu it opened
     if (wasDragged) onDrop?.();
     else if (hadMenu) { /* the menu is already open */ }
@@ -947,7 +950,7 @@ function dragSort(node, opts) {
         lift();
       } else return false;
     }
-    if (!ghost && far > 12) {
+    if (!ghost && far > 12 && !noDrag) {
       clearTimeout(menuTimer); menuTimer = null;
       if (menuOpen) { menuOpen = false; closeSheet(); } // moving after the menu opened: drag instead
       startGhost();
@@ -2135,7 +2138,17 @@ function drawStats() {
     list.append(el('div', { class: 'empty' }, el('strong', {}, 'No data yet'), 'Set a goal to see your stats.'));
     return;
   }
-  if (calendar) { renderCalendar(list, state.tallies.filter(calendarShows)); return; }
+  if (calendar) {
+    // goals picked in GOALS that GROUPS (or the calendar type) now hides are unpicked; none left = All
+    const picked = state.settings.calGoals;
+    if (picked) {
+      const ok = new Set(calendarGoalChoices().map(t => t.id));
+      const kept = picked.filter(id => ok.has(id));
+      if (kept.length !== picked.length) { state.settings.calGoals = kept.length ? kept : null; save(); renderShowPanel(); }
+    }
+    renderCalendar(list, state.tallies.filter(calendarShows));
+    return;
+  }
   const shown = state.tallies.filter(statsShows);
   statsModel.rangeText = rangeLabel(r);
   if (!shown.length) {
@@ -3789,7 +3802,10 @@ function closeSheet() {
   $('#sheet-backdrop').classList.remove('show');
   if (document.activeElement) document.activeElement.blur();
 }
-$('#sheet-backdrop').addEventListener('click', () => { if (Date.now() - holdReleasedAt > 500) closeSheet(); });
+$('#sheet-backdrop').addEventListener('click', e => {
+  if (Date.now() - holdReleasedAt < 500 && Math.hypot(e.clientX - blockTap.x, e.clientY - blockTap.y) < 40) return; // the finger lifting off the card
+  closeSheet();
+});
 
 // Swipe a sheet down to dismiss it (only when its content is scrolled to the top).
 (() => {
