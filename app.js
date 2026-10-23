@@ -3079,26 +3079,32 @@ function updatePrompt(latest) {
   );
 }
 
+// Schedule for later: the user picks any date (wheels) and time. Goalie updates then, or, if it's
+// closed at that time, the next time it's opened.
 function laterSheet(latest) {
   const now = new Date();
-  const at = (days, hour) => { const d = addDays(startOfDay(now), days); d.setHours(hour, 0, 0, 0); return d.getTime(); };
-  const tonight = at(0, 21);
-  const choices = [
-    ['In 1 hour', Date.now() + 3600000],
-    now.getTime() < tonight - 3600000 ? ['Tonight at 9 PM', tonight] : null,
-    ['Tomorrow at 9 AM', at(1, 9)],
-    ['Next time I open Goalie', 'open'],
-  ].filter(Boolean);
-  const pick = value => {
-    state.settings.updateAt = value;
+  // start one hour from now, on the hour
+  const start = new Date(now.getTime() + 3600000); start.setMinutes(0, 0, 0);
+  const wheels = dateWheels(start, { minYear: now.getFullYear(), maxYear: now.getFullYear() + 1 });
+  const time = el('input', { class: 'text-input', type: 'time', value: toTimeInput(start) });
+  const error = el('p', { class: 'form-error hidden' });
+  const schedule = () => {
+    const day = wheels.get();
+    const [hh, mm] = (time.value || '00:00').split(':').map(Number);
+    const at = new Date(day.getFullYear(), day.getMonth(), day.getDate(), hh || 0, mm || 0);
+    if (at.getTime() <= Date.now()) { error.textContent = 'Pick a time that hasn\u2019t happened yet.'; error.classList.remove('hidden'); return; }
+    state.settings.updateAt = at.getTime();
     save(); closeSheet();
-    toast(value === 'open' ? 'Goalie will update next time you open it'
-      : `Goalie will update ${sameDay(new Date(value), now) ? 'at' : 'tomorrow at'} ${new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+    const when = at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    toast(sameDay(at, now) ? `Goalie will update today at ${when}` : `Goalie will update ${DAY_NAMES[at.getDay()]}, ${MONTH_SHORT[at.getMonth()]} ${at.getDate()} at ${when}`);
   };
   openSheet(
     el('h3', {}, 'When should Goalie update?'),
     el('p', {}, `Version ${latest} installs itself then. If Goalie is closed at that time, it updates the next time you open it.`),
-    choices.map(([label, value]) => el('button', { class: 'sheet-btn', onclick: () => pick(value) }, label)),
+    el('div', { class: 'sheet-label' }, 'DATE', wheels.node),
+    el('label', { class: 'sheet-label' }, 'TIME', time),
+    error,
+    el('button', { class: 'sheet-btn primary', onclick: schedule }, 'Schedule update'),
     el('button', { class: 'sheet-btn', onclick: () => switchSheet(() => updatePrompt(latest)) }, 'Back'),
   );
 }
