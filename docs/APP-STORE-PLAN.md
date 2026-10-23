@@ -28,10 +28,10 @@ Notes for whoever picks this up next (e.g. Claude Code on the Mac). Everything b
 
 ## Owner's to-do (accounts)
 - Apple Developer Program (enrolling as an organization; the website for Apple's form will be a new domain, see below).
-- Request the Family Controls distribution entitlement for bundle ID `com.knottyapparel.goalie` (suggested).
+- Request the Family Controls distribution entitlement for bundle ID `com.thegoalieapp.goalie` (registered 2026-10-23; add-ons: `.monitor`, `.shield`, `.shieldaction`).
 - Create the app in App Store Connect.
 - Firebase project: Google and Apple sign-in, Firestore, iOS app, `GoogleService-Info.plist`.
-- Domain (e.g. from GoDaddy) for a **separate** website: home, About, Privacy Policy, Support.
+- Domain **thegoalieapp.com** (e.g. from GoDaddy) for a **separate** website: home, About, Privacy Policy, Support.
   - Do **not** point the domain at the app's GitHub Pages site: changing the app's address would empty every installed home-screen copy, because web storage belongs to the address.
 
 ## App Store listing needs
