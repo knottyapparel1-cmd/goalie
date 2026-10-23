@@ -1702,3 +1702,7 @@ html { touch-action: manipulation; }
 .todo-section.colored.on-dark .todo-row { border-bottom-color: #ffffff; }
 .todo-section.colored.on-light .todo-row { border-bottom-color: #1c2a4a; }
 .todo-section.colored.custom-ink.custom-ink .todo-row { border-bottom-color: var(--sec-ink); }
+
+/* To-do footer: a hard line above the buttons instead of the fade (matches the header) */
+.todo-add-wrap { background: var(--bg); border-top: 1px solid var(--line); padding-top: 12px; }
+.todo-scroll { padding-bottom: 96px; }
